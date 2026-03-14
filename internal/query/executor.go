@@ -44,9 +44,10 @@ type ActiveQuery struct {
 // QueryResult represents the result of a query execution.
 // Contains the result set, query ID for tracking, and execution duration.
 type QueryResult struct {
-	ResultSet *ResultSet
-	QueryID   uuid.UUID
-	Duration  time.Duration
+	ResultSet  *ResultSet         `json:"resultSet"`
+	QueryID    uuid.UUID          `json:"queryId"`
+	Duration   time.Duration      `json:"duration"`
+	Pagination *PaginationContext `json:"pagination,omitempty"`
 }
 
 // StatementResult represents the result of a single statement in a multi-statement query.

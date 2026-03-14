@@ -12,7 +12,9 @@
     "test:integration": "vitest QueryEditor.integration.test.tsx"
   },
   "dependencies": {
+    "@ag-grid-community/core": "^32.3.9",
     "@ag-grid-community/react": "^32.3.9",
+    "@ag-grid-community/styles": "^32.3.9",
     "@hookform/resolvers": "^5.2.2",
     "@monaco-editor/react": "^4.7.0",
     "lucide-react": "^0.577.0",

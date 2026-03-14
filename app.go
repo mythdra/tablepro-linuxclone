@@ -376,3 +376,126 @@ func (a *App) ClearQueryHistory(ctx context.Context, connectionID string) error 
 	a.queryExecutor.ClearHistory(connID)
 	return nil
 }
+
+// ExecutePaginated executes a SQL query with server-side pagination.
+func (a *App) ExecutePaginated(ctx context.Context, connectionID, queryStr string, page, pageSize int) (*query.QueryResult, error) {
+	if a.queryExecutor == nil {
+		return nil, fmt.Errorf("query executor not initialized")
+	}
+
+	if a.connectionMgr == nil {
+		return nil, fmt.Errorf("connection manager not initialized")
+	}
+
+	connID, err := uuid.Parse(connectionID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid connection ID: %w", err)
+	}
+
+	conn, exists := a.connectionMgr.Get(connID)
+	if !exists {
+		return nil, fmt.Errorf("connection not found: %s", connectionID)
+	}
+
+	password, _ := connection.GetPassword(connID)
+	drv, err := driver.NewDriver(driver.TypeFromString(string(conn.Type)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create driver: %w", err)
+	}
+
+	connConfig := &driver.ConnectionConfig{
+		Host:     conn.Host,
+		Port:     conn.Port,
+		Database: conn.Database,
+		Username: conn.Username,
+		Password: password,
+	}
+	if err := drv.Connect(ctx, connConfig); err != nil {
+		return nil, fmt.Errorf("failed to connect: %w", err)
+	}
+	defer drv.Close()
+
+	paginationSvc := query.NewPaginationService()
+	validatedPageSize := paginationSvc.ValidatePageSize(pageSize)
+	paginatedQuery := paginationSvc.ApplySQLOffset(queryStr, page, validatedPageSize)
+
+	result, err := a.queryExecutor.Execute(ctx, connID, drv, paginatedQuery)
+	if err != nil {
+		return nil, fmt.Errorf("paginated query failed: %w", err)
+	}
+
+	countQuery := paginationSvc.GetCountQuery(queryStr)
+	countResult, countErr := a.queryExecutor.Execute(ctx, connID, drv, countQuery)
+
+	var totalCount int64
+	if countErr == nil && countResult.ResultSet != nil && countResult.ResultSet.RowCount > 0 && len(countResult.ResultSet.Rows) > 0 {
+		if col := countResult.ResultSet.Rows[0]; len(col) > 0 {
+			if count, ok := col[0].(int64); ok {
+				totalCount = count
+			}
+		}
+	}
+
+	result.Pagination = query.NewPaginationContext(page, validatedPageSize, totalCount)
+
+	return result, nil
+}
+
+// GetRowCount returns the estimated or exact row count for a query.
+func (a *App) GetRowCount(ctx context.Context, connectionID, queryStr string) (*query.CountResult, error) {
+	if a.queryExecutor == nil {
+		return nil, fmt.Errorf("query executor not initialized")
+	}
+
+	if a.connectionMgr == nil {
+		return nil, fmt.Errorf("connection manager not initialized")
+	}
+
+	connID, err := uuid.Parse(connectionID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid connection ID: %w", err)
+	}
+
+	conn, exists := a.connectionMgr.Get(connID)
+	if !exists {
+		return nil, fmt.Errorf("connection not found: %s", connectionID)
+	}
+
+	password, _ := connection.GetPassword(connID)
+	drv, err := driver.NewDriver(driver.TypeFromString(string(conn.Type)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create driver: %w", err)
+	}
+
+	connConfig := &driver.ConnectionConfig{
+		Host:     conn.Host,
+		Port:     conn.Port,
+		Database: conn.Database,
+		Username: conn.Username,
+		Password: password,
+	}
+	if err := drv.Connect(ctx, connConfig); err != nil {
+		return nil, fmt.Errorf("failed to connect: %w", err)
+	}
+	defer drv.Close()
+
+	paginationSvc := query.NewPaginationService()
+	countQuery := paginationSvc.GetCountQuery(queryStr)
+
+	result, err := a.queryExecutor.Execute(ctx, connID, drv, countQuery)
+	if err != nil {
+		return nil, fmt.Errorf("count query failed: %w", err)
+	}
+
+	var totalCount int64
+	if result.ResultSet != nil && result.ResultSet.RowCount > 0 && len(result.ResultSet.Rows) > 0 {
+		if col := result.ResultSet.Rows[0]; len(col) > 0 {
+			if count, ok := col[0].(int64); ok {
+				totalCount = count
+			}
+		}
+	}
+
+	countResult := paginationSvc.EstimateCount(totalCount)
+	return &countResult, nil
+}
