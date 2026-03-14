@@ -268,3 +268,106 @@ func getStateString(state SessionState) string {
 		return "unknown"
 	}
 }
+
+// ConnectionManager interface for dependency injection
+type ConnectionManager interface {
+	GetConnection(ctx context.Context, id uuid.UUID) (*sql.DB, error)
+}
+
+// connManager is the connection manager dependency (set via SetConnectionManager)
+var connMgr ConnectionManager
+
+// SetConnectionManager sets the connection manager dependency
+func (sm *SessionManager) SetConnectionManager(cm ConnectionManager) {
+	connMgr = cm
+}
+
+// StartHealthCheckWorker starts the background health check worker
+func (sm *SessionManager) StartHealthCheckWorker(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(sm.config.HealthCheckInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sm.checkAllSessions()
+			}
+		}
+	}()
+}
+
+func (sm *SessionManager) checkAllSessions() {
+	for _, s := range sm.GetAllSessions() {
+		if !s.IsRecentlyActive(sm.config.HealthCheckInterval) {
+			sm.handleUnhealthySession(s.ID)
+		}
+	}
+}
+
+func (sm *SessionManager) handleUnhealthySession(id uuid.UUID) {
+	go sm.reconnectSessionWithConnMgr(id)
+}
+
+func (sm *SessionManager) reconnectSessionWithConnMgr(id uuid.UUID) {
+	s, err := sm.GetSession(id)
+	if err != nil {
+		return
+	}
+	for s.RetryCount < sm.config.MaxRetries {
+		backoff := sm.calculateBackoff(s.RetryCount)
+		if !sm.waitForBackoff(sm.ctx, backoff) {
+			return
+		}
+		if connMgr != nil {
+			// Try to reconnect via connection manager
+			_, err := connMgr.GetConnection(sm.ctx, s.ConnectionID)
+			if err == nil {
+				s.mu.Lock()
+				s.RetryCount = 0
+				s.mu.Unlock()
+				return
+			}
+		}
+		s.mu.Lock()
+		s.RetryCount++
+		s.mu.Unlock()
+	}
+	sm.CloseSession(id)
+}
+
+// CleanupOrphanedSessions cleans up sessions left from previous runs
+func (sm *SessionManager) CleanupOrphanedSessions(ctx context.Context) error {
+	// Close all existing sessions on startup
+	for _, s := range sm.GetAllSessions() {
+		sm.CloseSession(s.ID)
+	}
+	return nil
+}
+
+// GetConnectionFromPool gets a connection from the session pool
+func (sm *SessionManager) GetConnectionFromPool(ctx context.Context, s *Session) (*sql.DB, error) {
+	return sm.GetConnection(ctx, s, func(ctx context.Context) (*sql.DB, error) {
+		if connMgr == nil {
+			return nil, fmt.Errorf("connection manager not configured")
+		}
+		return connMgr.GetConnection(ctx, s.ConnectionID)
+	})
+}
+
+// ReturnConnectionToPool returns a connection to the session pool
+func (sm *SessionManager) ReturnConnectionToPool(s *Session, db *sql.DB) {
+	sm.ReturnConnection(s, db)
+}
+
+func (sm *SessionManager) waitForBackoff(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
+}
