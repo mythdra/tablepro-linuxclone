@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,17 +11,13 @@ import (
 	"tablepro/internal/connection"
 	"tablepro/internal/driver"
 	"tablepro/internal/query"
-	"tablepro/internal/session"
 )
 
 // App struct
 type App struct {
-	ctx            context.Context
-	connectionMgr  *connection.ConnectionManager
-	sessionManager *session.SessionManager
-	queryExecutor  *query.QueryExecutor
-	sessionMap     map[uuid.UUID]*session.Session
-	sessionMapMu   sync.RWMutex
+	ctx           context.Context
+	connectionMgr *connection.ConnectionManager
+	queryExecutor *query.QueryExecutor
 }
 
 // NewApp creates a new App application struct
@@ -32,17 +27,11 @@ func NewApp() *App {
 		slog.Error("Failed to initialize connection manager", "error", err)
 	}
 
-	sessionConfig := session.DefaultSessionConfig()
-	sessionMgr := session.NewSessionManager(sessionConfig)
-	sessionMgr.SetConnectionManager(connMgr)
-
 	queryExec := query.NewQueryExecutor()
 
 	return &App{
-		connectionMgr:  connMgr,
-		sessionManager: sessionMgr,
-		queryExecutor:  queryExec,
-		sessionMap:     make(map[uuid.UUID]*session.Session),
+		connectionMgr: connMgr,
+		queryExecutor: queryExec,
 	}
 }
 
@@ -51,90 +40,13 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	slog.Info("TablePro starting...")
-
-	sessionConfig := session.DefaultSessionConfig()
-	a.sessionManager = session.NewSessionManager(sessionConfig)
-	a.sessionManager.SetConnectionManager(a.connectionMgr)
-
-	go a.sessionManager.StartHealthCheckWorker(ctx)
-
-	if err := a.sessionManager.CleanupOrphanedSessions(ctx); err != nil {
-		slog.Error("Failed to cleanup orphaned sessions", "error", err)
-	}
-
 	slog.InfoContext(ctx, "App startup complete")
 }
 
 // shutdown is called when the app stops
 func (a *App) shutdown(ctx context.Context) {
 	slog.InfoContext(ctx, "TablePro shutting down...")
-
-	if a.sessionManager != nil {
-		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-
-		if err := a.sessionManager.Shutdown(shutdownCtx); err != nil {
-			slog.Error("Failed to shutdown session manager", "error", err)
-		}
-	}
-
 	slog.Info("Cleanup complete")
-}
-
-// getOrCreateSession gets an existing session for a connection or creates a new one
-func (a *App) getOrCreateSession(ctx context.Context, connID uuid.UUID) (*session.Session, error) {
-	a.sessionMapMu.RLock()
-	sess, exists := a.sessionMap[connID]
-	a.sessionMapMu.RUnlock()
-
-	if exists {
-		return sess, nil
-	}
-
-	a.sessionMapMu.Lock()
-	defer a.sessionMapMu.Unlock()
-
-	if sess, exists = a.sessionMap[connID]; exists {
-		return sess, nil
-	}
-
-	sess, err := a.sessionManager.CreateSession(ctx, connID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create session: %w", err)
-	}
-
-	a.sessionMap[connID] = sess
-	return sess, nil
-}
-
-// executeQueryWithSession executes a query using a session's connection pool
-func (a *App) executeQueryWithSession(ctx context.Context, sess *session.Session, connID uuid.UUID, drv driver.DatabaseDriver, queryStr string) (*query.QueryResult, error) {
-	db, err := a.sessionManager.GetConnectionFromPool(ctx, sess)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection from pool: %w", err)
-	}
-
-	defer func() {
-		if db != nil {
-			a.sessionManager.ReturnConnectionToPool(sess, db)
-		}
-	}()
-
-	result, err := drv.Query(ctx, queryStr)
-	if err != nil {
-		return nil, fmt.Errorf("query execution failed: %w", err)
-	}
-
-	var resultSet *query.ResultSet
-	if result != nil {
-		resultSet = query.NewResultSetFromRows([]*driver.Row{result}, 0, queryStr, drv.Type())
-	}
-
-	return &query.QueryResult{
-		ResultSet: resultSet,
-		QueryID:   uuid.New(),
-		Duration:  0,
-	}, nil
 }
 
 // Greet returns a greeting for the given name
@@ -311,11 +223,6 @@ func (a *App) ExecuteQuery(ctx context.Context, connectionID, queryStr string) (
 		return nil, fmt.Errorf("invalid connection ID: %w", err)
 	}
 
-	_, err = a.getOrCreateSession(ctx, connID)
-	if err != nil {
-		return nil, err
-	}
-
 	conn, exists := a.connectionMgr.Get(connID)
 	if !exists {
 		return nil, fmt.Errorf("connection not found: %s", connectionID)
@@ -326,7 +233,6 @@ func (a *App) ExecuteQuery(ctx context.Context, connectionID, queryStr string) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to create driver: %w", err)
 	}
-	defer drv.Close()
 
 	connConfig := &driver.ConnectionConfig{
 		Host:     conn.Host,
@@ -338,6 +244,7 @@ func (a *App) ExecuteQuery(ctx context.Context, connectionID, queryStr string) (
 	if err := drv.Connect(ctx, connConfig); err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
+	defer drv.Close()
 
 	return a.queryExecutor.Execute(ctx, connID, drv, queryStr)
 }
