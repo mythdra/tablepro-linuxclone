@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"tablepro/internal/change"
 	"tablepro/internal/connection"
 	"tablepro/internal/driver"
 	"tablepro/internal/query"
@@ -18,6 +19,7 @@ type App struct {
 	ctx           context.Context
 	connectionMgr *connection.ConnectionManager
 	queryExecutor *query.QueryExecutor
+	changeManager *change.DataChangeManager
 }
 
 // NewApp creates a new App application struct
@@ -32,6 +34,7 @@ func NewApp() *App {
 	return &App{
 		connectionMgr: connMgr,
 		queryExecutor: queryExec,
+		changeManager: change.NewDataChangeManager(),
 	}
 }
 
@@ -375,4 +378,63 @@ func (a *App) ClearQueryHistory(ctx context.Context, connectionID string) error 
 
 	a.queryExecutor.ClearHistory(connID)
 	return nil
+}
+
+// ==================== Change Tracking RPC Methods ====================
+
+func (a *App) InitChangeTracking(ctx context.Context, tabID, tableName, schemaName string, primaryKeys []string) error {
+	if a.changeManager == nil {
+		return fmt.Errorf("change manager not initialized")
+	}
+	a.changeManager.InitTab(tabID, tableName, schemaName, primaryKeys)
+	return nil
+}
+
+func (a *App) UpdateCell(ctx context.Context, tabID string, rowIndex int, column string, originalValue, newValue any, primaryKey map[string]any) error {
+	if a.changeManager == nil {
+		return fmt.Errorf("change manager not initialized")
+	}
+	return a.changeManager.UpdateCell(tabID, rowIndex, column, originalValue, newValue, primaryKey)
+}
+
+func (a *App) InsertRow(ctx context.Context, tabID string, data map[string]any) (string, error) {
+	if a.changeManager == nil {
+		return "", fmt.Errorf("change manager not initialized")
+	}
+	return a.changeManager.InsertRow(tabID, data)
+}
+
+func (a *App) DeleteRow(ctx context.Context, tabID string, primaryKey map[string]any, rowIndex int) error {
+	if a.changeManager == nil {
+		return fmt.Errorf("change manager not initialized")
+	}
+	return a.changeManager.DeleteRow(tabID, primaryKey, rowIndex)
+}
+
+func (a *App) GetPendingChanges(ctx context.Context, tabID string) (*change.PendingChanges, error) {
+	if a.changeManager == nil {
+		return nil, fmt.Errorf("change manager not initialized")
+	}
+	return a.changeManager.GetPendingChanges(tabID)
+}
+
+func (a *App) DiscardChanges(ctx context.Context, tabID string) error {
+	if a.changeManager == nil {
+		return fmt.Errorf("change manager not initialized")
+	}
+	return a.changeManager.DiscardChanges(tabID)
+}
+
+func (a *App) UndoChange(ctx context.Context, tabID string) error {
+	if a.changeManager == nil {
+		return fmt.Errorf("change manager not initialized")
+	}
+	return a.changeManager.Undo(tabID)
+}
+
+func (a *App) RedoChange(ctx context.Context, tabID string) error {
+	if a.changeManager == nil {
+		return fmt.Errorf("change manager not initialized")
+	}
+	return a.changeManager.Redo(tabID)
 }
