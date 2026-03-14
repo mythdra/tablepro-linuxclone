@@ -129,3 +129,31 @@ export interface ColumnMetadata {
   isPrimaryKey?: boolean;
   isForeignKey?: boolean;
 }
+
+export interface PaginationContext {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+  offset: number;
+  isExact: boolean;
+}
+
+export interface PaginatedQueryResult {
+  queryId: string;
+  connectionId: string;
+  columns: ColumnInfo[];
+  rows: unknown[][];
+  rowCount: number;
+  duration: number;
+  status: 'success' | 'error' | 'cancelled';
+  error?: string;
+  pagination: PaginationContext;
+}
+
+export interface CountResult {
+  count: number;
+  isExact: boolean;
+}
