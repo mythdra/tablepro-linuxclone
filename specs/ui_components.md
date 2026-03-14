@@ -1,35 +1,73 @@
-# TablePro UI Components & Navigation
+# UI Components & Navigation (React + Wails)
 
 ## Overview
-TablePro's user interface is built primarily with SwiftUI, integrated with AppKit where necessary (e.g., window management, complex text editors). The UI architecture strongly follows the Coordinator pattern to separate navigation/business logic from view definitions.
+The UI is a single-page React application rendered inside Wails' WebView. Component library uses **Radix UI** primitives for accessibility, styled with **Tailwind CSS**. State is managed by **Zustand** stores that call Wails-bound Go methods.
 
-## Main Layout & Navigation
-The application window layout is divided into standard database client sections:
-1. **Sidebar (`Views/Sidebar`)**: Displays connection groups and active connections.
-2. **Database Switcher / Quick Switcher**: Allows rapid switching between schemas and databases.
-3. **Main Content (`Views/Main`)**: The central working area.
-4. **Right Sidebar**: Inspector panel for table metadata, column details, and foreign keys.
+## Component Architecture
+```
+App.tsx
+├── Toolbar.tsx
+├── PanelLayout.tsx (react-resizable-panels)
+│   ├── Sidebar/
+│   │   ├── SchemaTree.tsx
+│   │   ├── TableSearchBar.tsx
+│   │   └── ContextMenu.tsx
+│   ├── MainWorkspace/
+│   │   ├── TabBar.tsx
+│   │   ├── QueryEditor.tsx (Monaco)
+│   │   ├── DataGrid.tsx (AG Grid)
+│   │   └── StatusBar.tsx
+│   └── RightPanel/
+│       ├── AIChatPanel.tsx
+│       ├── QueryHistoryPanel.tsx
+│       └── FormatterPanel.tsx
+├── Modals/
+│   ├── ConnectionForm.tsx
+│   ├── ExportDialog.tsx
+│   ├── ImportDialog.tsx
+│   └── SettingsDialog.tsx
+└── Providers/
+    ├── ThemeProvider.tsx
+    └── KeyboardShortcutProvider.tsx
+```
 
-### MainContentCoordinator
-The central brain of the UI is `MainContentCoordinator`. Due to its immense responsibility, it's chunked into multiple extensions (`+Alerts`, `+Filtering`, `+Pagination`, `+RowOperations`, etc.). 
-It manages:
-- The active selected table or query tab.
-- Pagination state and data fetching calls.
-- Filter and sort states for grid views.
-- Toggling of UI panels.
+## State Management (Zustand)
+Each major feature has its own store, calling Go backend methods:
+```typescript
+// stores/connectionStore.ts
+import { GetConnections, SaveConnection, TestConnection } from '../wailsjs/go/main/ConnectionManager';
 
-## SQL Editor (`Views/Editor`)
-The SQL Editor doesn't use standard SwiftUI TextEdit due to performance requirements.
-- **Engine**: CodeEditSourceEditor (via SPM), enabling tree-sitter based syntax highlighting, blazing fast text layout, and multi-cursor editing.
-- **Theme**: `SQLEditorTheme` defining colors/fonts, bridged by `TableProEditorTheme`.
-- **Autocomplete**: Handled by `CompletionEngine` and bridged to the editor via `SQLCompletionAdapter`.
-- **Query Execution**: `QueryEditorView` handles splitting multiple statements and executing the selected text or current statement under cursor.
-- **AI Integration**: Editor context menus feature inline AI assistance for query generation and explanation.
+export const useConnectionStore = create((set) => ({
+  connections: [],
+  loadConnections: async () => {
+    const conns = await GetConnections();
+    set({ connections: conns });
+  },
+  testConnection: async (config) => {
+    return await TestConnection(config);
+  },
+}));
+```
 
-## Data Grid & Results (`Views/Results`)
-The result set from a SQL query or table browse is displayed in a highly optimized native grid.
-- Capable of inline cell editing, handled via `DataChangeManager`.
-- Supports pagination and infinite scrolling conventions.
+## Event-Driven Updates
+Go pushes real-time updates to React:
+```go
+// Go backend
+runtime.EventsEmit(ctx, "query:progress", progressData)
+runtime.EventsEmit(ctx, "connection:status", statusData)
+```
+```typescript
+// React frontend
+import { EventsOn } from '../wailsjs/runtime/runtime';
+useEffect(() => {
+  EventsOn("query:progress", (data) => { /* update progress bar */ });
+}, []);
+```
 
-## Connections UI
-The `Connection` views handle forms for SSH tunneling, SSL configurations, server addresses, and custom driver flags (like MongoDB connection strings or Redis databases).
+## MainContentCoordinator → React Equivalent
+The Swift `MainContentCoordinator` monolith maps to multiple focused Zustand stores:
+- `useTabStore` — tab CRUD, selection, persistence
+- `useQueryStore` — query execution, results, pagination
+- `useChangeStore` — cell edits, pending changes, undo/redo
+- `useFilterStore` — column filters, sort state
+- `useSidebarStore` — schema tree, search, selection

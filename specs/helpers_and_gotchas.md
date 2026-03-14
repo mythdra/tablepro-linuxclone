@@ -1,49 +1,103 @@
-# Helper Functions & Architectural Gotchas
+# Helpers & Gotchas (Go + React)
 
-This document catalogs critical utility functions, caching strategies, and subtle behaviors found throughout the TablePro codebase. These must be faithfully replicated in the Qt/C++ rewrite to maintain performance and feature parity.
+## Go-Specific Helpers
 
-## 1. `DateFormattingService` (High-Performance Caching)
+### 1. Connection URL Parser
+```go
+func ParseConnectionURL(rawURL string) (*ParsedConnection, error) {
+    // Handle dual-@ SSH URLs: postgres+ssh://sshuser@bastion:22/dbuser:pass@10.0.0.1:5432/mydb
+    // Go's url.Parse() breaks on dual @, so use custom regex:
+    sshPattern := regexp.MustCompile(`^(\w+)\+ssh://([^@]+)@([^/]+)/(.+)$`)
+    // Extract SSH part, then parse inner URL normally
+}
+```
+> **Gotcha**: Go's `net/url.Parse()` cannot handle `scheme+ssh://user@host/otheruser@otherhost` — must use manual regex splitting (same issue as Swift).
 
-Rendering 10,000 rows x 20 columns in a Data Grid means processing potentially hundreds of thousands of date strings. Standard date parsing is extremely slow.
+### 2. Goroutine Leak Prevention
+```go
+// Always use context with timeout for database operations
+ctx, cancel := context.WithTimeout(parentCtx, time.Duration(settings.QueryTimeout)*time.Second)
+defer cancel()
+result, err := driver.ExecuteWithContext(ctx, query)
+```
+> **Gotcha**: Forgetting `defer cancel()` causes goroutine leaks. Every DB call must have a bounded context.
 
-### The Gotchas:
-- **String Caching**: The app maintains an `NSCache` (max 10,000 items) mapping raw database strings (e.g., `"2024-03-01 12:00:00"`) directly to their localized, formatted display strings.
-- **Timezone Handling**:
-  - If a format string contains a timezone marker (e.g. `ISO8601`), it parses the offset.
-  - If a format string is "naive" (e.g., `yyyy-MM-dd HH:mm:ss`), it parses the time utilizing the user's `TimeZone.current` rather than UTC. This ensures that displaying `"12:00:00"` does not accidentally shift to `"17:00:00"` just because the local system is in EST.
+### 3. JSON Serialization of `any` Types
+```go
+// Database drivers return []any for cell values
+// Go's json.Marshal handles most types, but:
+// - time.Time → format as ISO 8601 string
+// - []byte → base64 encode (or hex for binary display)
+// - nil → JSON null (AG Grid renders as "NULL" styled cell)
+```
 
-### Qt Implementation:
-Use a thread-safe `QCache<QString, QString>` inside a global Singleton or Data Model context. For date manipulation, use `QDateTime::fromString` ensuring naive dates invoke `Qt::LocalTime`.
+### 4. Large Query Truncation
+```go
+const MaxPersistableQuerySize = 500 * 1024 // 500KB
+func truncateForPersistence(query string) string {
+    if len(query) > MaxPersistableQuerySize {
+        return "" // Don't persist oversized queries
+    }
+    return query
+}
+```
 
-## 2. `SQLFormatterService` (Safe Parsing & Cursor Tracking)
+## React-Specific Helpers
 
-The SQL Formatter attempts to beautify messy queries but must be extremely defensive to prevent data corruption or UI freezing.
+### 1. Debounced Search
+```typescript
+export function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debouncedValue;
+}
+```
 
-### The Gotchas:
-- **10MB DoS Protection**: Prevents freezing on massive dumps.
-- **Placeholder Replacement**: Before running the regex to uppercase keywords like `SELECT`, the engine temporarily strips out all String Literals (`'...'`) and Comments (`-- ...`) and replaces them with a UUID placeholder (`__STRING_0__`). This prevents the formatter from modifying string data (e.g., changing `'please select a user'` to `'please SELECT a user'`).
-- **Cursor Ratio Preservation**: When a user highlights code and clicks "Format", the engine calculates a float ratio `(original_cursor_index / original_string_length)` and applies it to the newly formatted string length so their cursor doesn't jump to the beginning of the file.
+### 2. Progress Throttling
+```typescript
+// Go emits progress events very rapidly during imports
+// Throttle React re-renders to ~15fps
+const throttledProgress = useThrottle(progress, 66); // 66ms = ~15fps
+```
 
-### Qt Implementation:
-Use `QRegularExpression` caching. The string replacement logic can be replicated natively, ensuring `QRegularExpression` is instantiated once and reused to minimize CPU load.
+### 3. Clipboard Handling
+```typescript
+// Copy cell or row data to clipboard
+async function copyToClipboard(text: string) {
+  await navigator.clipboard.writeText(text);
+  // Wails also provides runtime.ClipboardSetText() for cross-platform
+}
+```
 
-## 3. `ExportService` (Progress Coalescing & Batched Queries)
+### 4. Date Formatting
+```typescript
+// Display database timestamps in user's locale
+function formatDate(value: string, locale: string): string {
+  const date = new Date(value);
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+  }).format(date);
+}
+```
 
-When exporting 20 tables, calculating the exact progress bar denominator natively requires running `SELECT COUNT(*)` 20 times, which is slow.
+## Architecture Gotchas
 
-### The Gotchas:
-- **UNION ALL Batching**: The service clumps up to 50 `COUNT(*)` checks into a single query via `UNION ALL` to prevent database round-trips.
-- **Progress Coalescing**: The C-plugins emit progress updates (e.g., `processedRows = 120530`) thousands of times a second. The app utilizes a `ProgressUpdateCoalescer` that drops rapid frames and only dispatches updates to the MainUI Thread at a manageable framerate (e.g., 30fps), preventing the UI from locking up during a massive export.
+### WebView Memory
+- AG Grid with 100K rows in DOM = ~200MB WebView memory
+- **Must use** AG Grid's Server-Side Row Model for large datasets
+- Keep result set transfers from Go → React under 50MB
 
-### Qt Implementation:
-Progress signals from the `QThread` or `QtConcurrent` must be debounced/throttled or passed through a `QTimer`-controlled throttler before hitting the QML UI bindings.
+### JSON Transfer Overhead
+- Wails serializes Go structs to JSON for frontend consumption
+- For 100K rows × 20 columns, JSON payload can be 50-100MB
+- **Mitigation**: Paginate results (default 500 rows per page)
+- **Mitigation**: Use compact column types (don't stringify everything)
 
-## 4. `UserDefaults` Extensions
-
-- **Recent Databases History**: Connects history arrays to specific `connectionId` UUIDs, bounding the history to a `maxRecentCount = 5` via `Array.prefix`.
-- **Qt Implementation**: Replicate using `QSettings` utilizing nested `beginGroup(uuid)` logic.
-
-## 5. `String` Extensions
-- **JSON Pretty Printing**: Extracts strings -> JSON Objects -> Serializes with `.prettyPrinted`, `.sortedKeys`, and `.withoutEscapingSlashes`.
-- **SHA256**: Utilizes `CryptoKit` (macOS native) to hash strings securely.
-- **Qt Implementation**: Replicate using `QJsonDocument(QJsonDocument::fromJson).toJson(QJsonDocument::Indented)` and `QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex()`.
+### Concurrent Access in Go
+- All database driver calls happen on goroutines
+- `sync.RWMutex` on shared state (SchemaCache, ConnectionSessions)
+- Never hold a lock while calling `runtime.EventsEmit()` (deadlock risk)

@@ -1,32 +1,39 @@
-# TablePro Core Services
+# Core Services (Go Backend)
 
 ## Overview
-The `Core/Services` directory encapsulates business logic that doesn't belong directly in UI layers or raw database drivers. 
+Business logic lives in Go packages under `internal/`. Each service is a Go struct that gets bound to Wails for frontend access.
 
-## 1. Export & Import Services (`Core/Services/Export/`)
-TablePro allows exporting query results or entire tables into various formats.
-- Uses `ExportService` and `ImportService` coordinators.
-- Formats are actually independent plugins loaded by `PluginManager` (e.g., CSV, JSON, MQL, SQL, XLSX).
-- To stream massive datasets without maxing out RAM, data is passed as Streams or batched arrays via `PluginExportDataSource`.
-- **XLSXExportPlugin**: Uses native Swift XLSX manipulation (or Core-written `XLSXWriter`) to emit proper Excel files. 
+## 1. Export & Import Services (`internal/export/`)
+- `ExportService` and `ImportService` structs bound to Wails
+- Formats implemented as Go interfaces (CSV, JSON, SQL, XLSX, Markdown)
+- Streaming: large datasets written via `io.Writer` pipes to avoid RAM spikes
+- **XLSX**: Use `github.com/xuri/excelize/v2` for Excel file generation
+- Frontend calls: `ExportTable(connectionID, tableName, format, options)`
+- Progress pushed via `runtime.EventsEmit(ctx, "export:progress", pct)`
 
-## 2. Formatting Services (`Core/Services/Formatting/`)
-- `SQLFormatterService`: Parses dirty, unstructured SQL queries and formats them with proper indentation and casing according to standard styles.
-- `DateFormattingService`: Utility to parse standard SQL-styled dates to locale-aware localized string presentations on the native macOS UI.
+## 2. Formatting Services (`internal/formatting/`)
+- `SQLFormatterService`: SQL beautification using regex-based tokenizer or `github.com/k0kubun/sqldef`
+- `DateFormatter`: Go's `time.Format()` for locale-aware date display
+- Called from React when user clicks "Format SQL" in editor
 
-## 3. Infrastructure & Routing (`Core/Services/Infrastructure/`)
-- `AppNotifications`: Central point for macOS Notification Center alerts (e.g., Export complete, Query successful).
-- `DeeplinkHandler`: Parses incoming URL schemes (`tablepro://`) to automatically open specific connections or run queries.
-- `WindowOpener` / `WindowManager`: AppKit abstractions bridging macOS Window management to SwiftUI `WindowGroup`.
-- `UpdaterBridge`: Connects the Sparkle (Obj-C) standard framework to the Swift UI for "Check for Updates" actions.
+## 3. Infrastructure (`internal/infra/`)
+- **DeepLinkHandler**: Parses `tablepro://` URLs, extracts connection params
+  - On macOS: Wails handles URL scheme registration
+  - Queues deep links if app not fully loaded yet
+- **WindowManager**: Wails manages windows natively
+  - Multi-window via `runtime.WindowSetTitle()`, `runtime.WindowShow()`
+- **Updater**: Self-update via `github.com/rhysd/go-github-selfupdate` or custom HTTP check
 
-## 4. Query Builders (`Core/Services/Query/`)
-- **SQLDialectProvider**: Maps `DatabaseType` to specific string escaping and formatting rules for SQL query generation.
-- **TableQueryBuilder**: Generates safe, parameterized `SELECT`, `INSERT`, `UPDATE`, `DELETE` queries dynamically taking pagination, filtering, grouping, and ordering into account.
-- **RowParser**: Translates raw `ResultRow` values stringified from C-DB drivers into typed native structures conforming to the table schema definitions.
-- **RowOperationsManager**: The UI bridge utilizing `TableQueryBuilder` for mutating table rows safely.
+## 4. Query Builders (`internal/query/`)
+- **DialectProvider**: Maps `DatabaseType` → quoting rules, param style, pagination syntax
+- **TableQueryBuilder**: Generates parameterized `SELECT/INSERT/UPDATE/DELETE`
+  - Handles filters, sorting, pagination per dialect
+  - Example: PostgreSQL `SELECT * FROM "users" WHERE "age" > $1 ORDER BY "name" LIMIT $2 OFFSET $3`
+- **RowParser**: Converts raw `[]any` from Go drivers into typed frontend-consumable JSON
+- **SQLStatementGenerator**: Converts `DataChangeManager` deltas into executable SQL
 
-## 5. Licensing (`Core/Services/Licensing/`)
-- **LicenseManager**: Exposes current app license state (Free vs Pro).
-- **LicenseAPIClient**: Communicates with standard Lemon Squeezy or custom backend REST protocols for validation.
-- **LicenseSignatureVerifier**: Uses a cryptographic public key to verify that the cached license key hasn't been tampered with or tampered offline (prevents basic pirate bypasses).
+## 5. Licensing (`internal/license/`)
+- **LicenseManager**: Checks license state (Free vs Pro)
+- **LicenseAPIClient**: HTTP calls to Lemon Squeezy or custom backend
+- **SignatureVerifier**: Ed25519 public key verification via Go's `crypto/ed25519`
+- License key stored in OS Keychain via `go-keyring`

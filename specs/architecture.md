@@ -1,42 +1,101 @@
-# TablePro System Architecture
+# TablePro System Architecture (Go + Wails + React)
 
 ## Overview
-TablePro is a native macOS database client designed as a fast, lightweight alternative to TablePlus. 
-It requires macOS 14.0+ and is built entirely in Swift 5.9, utilizing a mix of SwiftUI and AppKit. It is distributed as a Universal Binary (arm64 + x86_64).
+TablePro is a cross-platform database client rewritten in **Go** (backend) with **Wails v2** (desktop framework) and **React + TypeScript** (frontend). It targets macOS, Windows, and Linux as a single binary (~15-20MB).
 
-## High-Level Modules
-The application codebase is strictly organized into distinct layers and modules:
+## High-Level Architecture
 
-- **Core** (`TablePro/Core/`): Contains the business logic, services, database management, change tracking, and export/import functionalities.
-- **Views** (`TablePro/Views/`): Contains all SwiftUI user interface components. Organized by feature (e.g., Editor, Connection, Sidebar, Main, Results, Toolbar).
-- **Models** (`TablePro/Models/`): Contains simple data structures and domain objects (Connection, Database, Query, UI state, clickhouse, AI, etc.).
-- **ViewModels** (`TablePro/ViewModels/`): Presentation logic that binds Models to Views using SwiftUI's latest `@Observable` macro approach.
-- **Plugins** (`Plugins/`): Independent bundles (`.tableplugin`) for Database Drivers (MySQL, PostgreSQL, etc.) and Export/Import formats.
-- **Theme/Extensions**: Contains shared styling, syntax highlighting themes, and Swift extensions.
-- **Libs/**: Pre-built static libraries for database C-clients (e.g., `libmariadb.a`, `libpq.a`) tracked via Git LFS.
+```
+┌─────────────────────────────────────────┐
+│           React Frontend (WebView)       │
+│  ┌──────┐ ┌──────┐ ┌────────┐ ┌──────┐ │
+│  │Sidebar│ │Editor│ │DataGrid│ │Toolbar│ │
+│  └──┬───┘ └──┬───┘ └───┬────┘ └──┬───┘ │
+│     └────────┴─────────┴─────────┘      │
+│              wails.EventsEmit            │
+│              wails.Bind (RPC)            │
+├─────────────────────────────────────────┤
+│           Go Backend (Wails Runtime)     │
+│  ┌─────────────┐  ┌──────────────────┐  │
+│  │ ConnectionMgr│  │ DatabaseManager  │  │
+│  │ TabManager   │  │ ExportService    │  │
+│  │ SettingsMgr  │  │ ImportService    │  │
+│  │ HistoryMgr   │  │ ChangeTracker    │  │
+│  └──────┬──────┘  └────────┬─────────┘  │
+│         └──────────────────┘             │
+│              Driver Interface            │
+│  ┌──────┐ ┌─────┐ ┌──────┐ ┌─────────┐ │
+│  │ pgx  │ │mysql│ │sqlite│ │ duckdb  │ │
+│  └──────┘ └─────┘ └──────┘ └─────────┘ │
+└─────────────────────────────────────────┘
+```
 
-## Third-party Integrations (SPM)
-- **CodeEditSourceEditor**: Used for the SQL editor, featuring tree-sitter based syntax highlighting and multi-cursor support.
-- **Sparkle**: Used for automatic in-app updates.
-- **OracleNIO**: Swift implementation of Oracle DB driver.
+## Module Organization (Go)
+```
+cmd/
+  main.go              # Wails entry point
+internal/
+  driver/              # Database driver interface + implementations
+    interface.go       # DatabaseDriver interface
+    postgres.go        # pgx-based PostgreSQL driver
+    mysql.go           # go-sql-driver MySQL driver
+    sqlite.go          # go-sqlite3 driver
+    duckdb.go          # go-duckdb driver
+    mssql.go           # go-mssqldb driver
+    clickhouse.go      # clickhouse-go driver
+    mongodb.go         # mongo-go-driver
+    redis.go           # go-redis driver
+  connection/          # Connection CRUD, Keychain, URL parser
+  session/             # Active connection sessions & health monitoring
+  query/               # Query builder, pagination, dialect provider
+  change/              # DataChangeManager, SQLStatementGenerator
+  export/              # Export/Import orchestrators
+  history/             # Query history (SQLite FTS5)
+  settings/            # App preferences (JSON file)
+  tab/                 # Tab persistence (JSON per connection)
+  ssh/                 # SSH tunnel management (golang.org/x/crypto)
+  license/             # License validation (Ed25519 signatures)
+frontend/
+  src/
+    components/        # React UI components
+    stores/            # Zustand state stores
+    hooks/             # Custom React hooks for Wails bindings
+    lib/               # Utility functions
+```
 
-## Core Coordinator Pattern
-The primary state and flow of the application are orchestrated by the `MainContentCoordinator`. 
-Due to its complexity, it is divided into multiple extension files (e.g., `+Alerts`, `+Filtering`, `+Pagination`, `+RowOperations`) to keep the source clean. 
-
-## Change Tracking System
-The app uses a sophisticated tracking and undo mechanism when users edit table cells directly:
-1. User modifies a cell -> `DataChangeManager` stores the delta.
-2. User hits Save -> `SQLStatementGenerator` creates appropriate `INSERT/UPDATE/DELETE` commands safely handling primary keys.
-3. Undo/Redo is supported via `DataChangeUndoManager`.
+## Communication: Go ↔ React
+- **Wails Bind**: Go structs are "bound" to the frontend. React calls Go methods directly as `async` TypeScript functions (auto-generated by Wails).
+- **Wails Events**: For push-style updates (query progress, connection status changes), Go emits events via `runtime.EventsEmit()` and React listens via `runtime.EventsOn()`.
+- **No REST API needed** — Wails provides native IPC over the WebView bridge.
 
 ## Storage & Persistence
-- **Passwords**: Apple Keychain via `ConnectionStorage`.
-- **Preferences**: UserDefaults via `AppSettingsStorage` / `AppSettingsManager`.
-- **Query History**: SQLite FTS5 for fast full-text searching via `QueryHistoryStorage`.
-- **Session/Tab State**: Persisted as JSON via `TabPersistenceService`. To prevent performance hits, huge queries (>500KB) are truncated.
+- **Passwords**: OS Keychain via `github.com/zalando/go-keyring` (cross-platform).
+- **Preferences**: JSON file at `~/.config/tablepro/settings.json` via Go's `os` package.
+- **Query History**: Embedded SQLite with FTS5 via `github.com/mattn/go-sqlite3`.
+- **Tab State**: JSON files per connection UUID at `~/.config/tablepro/tabs/`.
 
-## Agent Strategy & Development Rules
-- Strict adherence to SwiftLint (line length < 120, max 1100 lines/file, max 160 lines/func).
-- Localization is mandatory using `String(localized:)` for user-facing texts.
-- Performance: O(1) string access required (`NSString`), avoiding `String.count` heavily in tight loops.
+## Third-party Dependencies (Go)
+| Package | Purpose |
+|---|---|
+| `github.com/wailsapp/wails/v2` | Desktop framework |
+| `github.com/jackc/pgx/v5` | PostgreSQL driver |
+| `github.com/go-sql-driver/mysql` | MySQL/MariaDB driver |
+| `github.com/mattn/go-sqlite3` | SQLite driver |
+| `github.com/marcboeker/go-duckdb` | DuckDB driver |
+| `github.com/microsoft/go-mssqldb` | SQL Server driver |
+| `github.com/ClickHouse/clickhouse-go/v2` | ClickHouse driver |
+| `go.mongodb.org/mongo-driver` | MongoDB driver |
+| `github.com/redis/go-redis/v9` | Redis driver |
+| `golang.org/x/crypto/ssh` | SSH tunneling |
+| `github.com/zalando/go-keyring` | OS Keychain access |
+
+## Third-party Dependencies (React Frontend)
+| Package | Purpose |
+|---|---|
+| `@ag-grid-community/react` | High-performance data grid (virtual scrolling, millions of rows) |
+| `@monaco-editor/react` | Code editor (VS Code engine) with SQL syntax highlighting |
+| `zustand` | Lightweight state management |
+| `react-resizable-panels` | Resizable pane layout |
+| `@radix-ui/react-*` | Accessible UI primitives |
+| `tailwindcss` | Utility-first CSS |
+| `lucide-react` | Icon library |

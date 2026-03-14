@@ -1,31 +1,103 @@
-# Tab Management & Session Restoration
+# Tab Management & Session Restoration (Go + React)
 
-This document details the algorithms used to save query tabs between launches and the memory management mechanics utilized to prevent the application from crashing when dozens of tabs return millions of rows.
+## 1. Tab State in React
+```typescript
+interface Tab {
+  id: string;
+  type: 'table' | 'query' | 'structure';
+  title: string;
+  query: string;
+  tableName?: string;
+  schemaName?: string;
+  isView?: boolean;
+  databaseName: string;
+  isExecuting: boolean;
+  // Results are fetched from Go, not stored in tab state
+}
 
-## 1. Disk Persistence Engine (`TabDiskActor`)
-- `TabDiskActor` operates as an asynchronous, thread-safe funnel for I/O.
-- Instead of using `UserDefaults` (which struggles with large binary blobs), it serializes the entire `[PersistedTab]` array for each Connection ID into individual `.json` files under `~/Library/Application Support/TablePro/TabState/`.
-- **Synchronous Override**: Because macOS can terminate an app instantly on `Cmd+Q`, the actor exposes a `saveSync()` static method. `applicationWillTerminate` bypasses the asynchronous actor queue to force-flush the JSON to disk synchronously, guaranteeing tab state survival during hard quits.
+const useTabStore = create<TabStore>((set, get) => ({
+  tabs: [],
+  activeTabId: null,
 
-## 2. Tab State Truncation (`TabPersistenceCoordinator`)
-- To prevent JSON blobs from reaching hundreds of megabytes, queries that exceed `QueryTab.maxPersistableQuerySize` (currently around 500KB) are intentionally stripped from the saved state.
-- `TabPersistenceCoordinator` does **not** use timers (like `debouncedSave()`). Instead, it is invoked explicitly on critical mutation events: Tab Added, Tab Closed, Text Editor Blurred, Connection Closed. This ensures maximum efficiency while avoiding race conditions on the main thread loop.
+  addTab: (tab) => {
+    set(s => ({ tabs: [...s.tabs, tab], activeTabId: tab.id }));
+    TabManager.SaveTabs(get().tabs, tab.id); // Persist to Go
+  },
 
-## 3. LRU Tab Eviction (`MainContentCoordinator+TabSwitch`)
-When a user runs a `SELECT *` in 10 separate tabs, memory usage can balloon exponentially. TablePro implements an aggressive Tab Eviction policy to maintain a flat memory footprint:
-- When a user switches tabs, `MainContentCoordinator.handleTabChange` calculates the active working set (usually the `oldTabId` and `newTabId`).
-- It scans the remaining background tabs (`tabManager.tabs`).
-- It filters for candidates: must not have pending unsaved edits (`!hasChanges`), must have executed previously, and must not already be evicted.
-- It sorts these candidates by `lastExecutedAt` timestamp.
-- If there are more than 2 inactive loaded tabs, it drops the `.resultRows` arrays of the LRU (Least Recently Used) tabs.
-- **Restoration**: When the user clicks back onto an evicted tab, the `needsLazyQuery` boolean dynamically flips to `true`, and the application automatically and silently re-executes the saved SQL query to stream the data back into the grid seamlessly.
+  closeTab: (tabId) => {
+    set(s => {
+      const newTabs = s.tabs.filter(t => t.id !== tabId);
+      const newActive = s.activeTabId === tabId ? newTabs[0]?.id : s.activeTabId;
+      TabManager.SaveTabs(newTabs, newActive);
+      return { tabs: newTabs, activeTabId: newActive };
+    });
+  },
 
-## 4. Sub-State Recovery
-When switching into a tab, the Coordinator pushes the following context properties back into the global state managers before re-rendering the Data Grid:
-1. **Filter State**: `filterStateManager.restoreFromTabState`
-2. **Column Visibility**: `columnVisibilityManager.restoreFromColumnLayout`
-3. **Change Tracking Checkums**: `changeManager.restoreState`
+  switchTab: (tabId) => {
+    set({ activeTabId: tabId });
+    TabManager.SaveTabs(get().tabs, tabId);
+  },
+}));
+```
 
-## Qt/C++ Migration Guidelines
-- **Persistence**: Replicate `TabDiskActor` using `QJsonDocument` pointing to `QStandardPaths::AppDataLocation`. Consider using a dedicated background `QThread` or `QtConcurrent::run` to avoid blocking the UI during save, but ensure you hook into `QGuiApplication::aboutToQuit` using a blocking `QMutex` waiting condition to flush the last write.
-- **LRU Eviction**: In C++, holding 2 million `QVariant` rows in background `QAbstractTableModel` instances will crash even quicker than Swift. Re-implement `evictInactiveTabs` precisely. Let `QSortFilterProxyModel` instances dump their underlying source model data and reset when hidden.
+## 2. Tab Persistence (Go Backend)
+```go
+type TabManager struct {
+    ctx     context.Context
+    baseDir string // ~/.config/tablepro/tabs/
+}
+
+func (tm *TabManager) SaveTabs(connectionID string, tabs []PersistedTab, activeTabID string) error {
+    // Filter out preview tabs
+    // Truncate queries > 500KB
+    state := TabDiskState{Tabs: tabs, SelectedTabID: activeTabID}
+    data, _ := json.Marshal(state)
+    path := filepath.Join(tm.baseDir, connectionID+".json")
+    return os.WriteFile(path, data, 0644)
+}
+
+func (tm *TabManager) RestoreTabs(connectionID string) (*TabDiskState, error) {
+    path := filepath.Join(tm.baseDir, connectionID+".json")
+    data, err := os.ReadFile(path)
+    if err != nil { return nil, nil } // No saved state
+    var state TabDiskState
+    json.Unmarshal(data, &state)
+    return &state, nil
+}
+```
+
+## 3. App Quit — Synchronous Save
+```go
+// In main.go, Wails OnBeforeClose hook
+func (a *App) beforeClose(ctx context.Context) bool {
+    // Save all open tabs synchronously before quit
+    for connID, tabs := range a.tabManager.GetAllOpenTabs() {
+        a.tabManager.SaveTabsSync(connID, tabs)
+    }
+    return false // Allow close
+}
+```
+- Uses Wails' `OnBeforeClose` hook — guarantees save before process exit
+- Synchronous write (no goroutines) since the event loop is shutting down
+
+## 4. Memory Management (React-side)
+Unlike the Swift version's LRU eviction of `NSTableView` data, the React version handles memory differently:
+
+- **AG Grid handles its own virtualization** — only visible rows are in DOM
+- **Result data** is stored in Go, not React. React only holds the current page (500 rows)
+- **Tab switching** doesn't need LRU eviction because result data stays in Go's memory
+- **Go-side eviction**: If too many connections are open, Go can evict cached query results:
+```go
+func (qm *QueryManager) EvictOldResults(maxCached int) {
+    // Sort tabs by lastExecutedAt
+    // Keep only maxCached most recent results
+    // Evicted tabs re-execute query on next switch
+}
+```
+
+## 5. Lazy Re-Query on Tab Switch
+When user switches to a tab whose results were evicted:
+1. React sends `QueryManager.GetResults(tabID)`
+2. Go checks if results are cached → if not, re-executes the saved query
+3. Results streamed back to React via return value
+4. AG Grid populates seamlessly — user doesn't notice the re-fetch

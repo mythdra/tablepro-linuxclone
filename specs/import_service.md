@@ -1,40 +1,150 @@
-# Import Service Algorithms
+# Import Service Algorithms (Go)
 
-This document covers the architectural flow for importing potentially massive (multi-gigabyte) SQL dump files without blocking the UI thread or exhausting system memory.
+## 1. Orchestration
+```go
+type ImportService struct {
+    ctx context.Context
+}
 
-## 1. Orchestration (`ImportService`)
-- The UI triggers `ImportService.importFile(from:formatId:encoding:)`.
-- The service uses the `TableProPluginKit` to locate an `ImportFormatPlugin` matching the `formatId` (e.g., `com.tablepro.import.sql`).
-- It creates two crucial bridging concrete objects:
-  - `ImportDataSinkAdapter`: A wrapper around the actual database driver (`PostgreSQLDriver`, `MySQLDriver`) that executes queries.
-  - `SqlFileImportSource`: A wrapper around the chosen file on disk.
-- It instantiates a `PluginImportProgress` tracker and starts a Coalescing mechanism (`ProgressUpdateCoalescer`) to rate-limit UI updates (throttling state updates so SwiftUI doesn't freeze on thousands of fast queries).
+func (is *ImportService) ImportFile(
+    connectionID uuid.UUID,
+    filePath string,
+    format string,
+    encoding string,
+) error {
+    driver := databaseManager.GetDriver(connectionID)
 
-## 2. Decompression Engine (`FileDecompressor`)
-- Before parsing starts, `SqlFileImportSource` checks the file extension.
-- If it ends in `.gz`, it does **not** decompress it into RAM using Swift's `Compression` framework.
-- Instead, it spawns a Detached Task that invokes the UNIX `/usr/bin/gunzip -c [file] > [tempFile.sql]`.
-- This ensures maximum C-level C-library speed for extraction mapping directly to a temporary disk location.
-- The `SqlFileImportSource.deinit` hook ensures the temporary `.sql` file is deleted when the import finishes or errors out.
+    // 1. Decompress if .gz
+    actualPath, cleanup, err := decompressIfNeeded(filePath)
+    if cleanup != nil { defer cleanup() }
 
-## 3. Streaming SQL Parser (`SQLFileParser`)
-- Multi-gigabyte SQL files cannot be loaded via `String(contentsOf:)` nor split via `.components(separatedBy: ";")`.
-- `SQLFileParser` uses an asynchronous finite state machine.
-- **Chunking**: It reads the file via `FileHandle` in exactly `64KB (65,536 bytes)` binary chunks.
-- **State Machine**: It iterates through the chunk, parsing:
-  - Normal statements.
-  - Multi-line comments (`/* ... */`).
-  - Single-line comments (`--`).
-  - Single quotes, double quotes, and backticks.
-- **Yielding**: Immediately upon hitting a safely un-quoted `;`, it yields the current string buffer via Swift `AsyncStream` back to the driver.
-- **String Handling**: To achieve high performance, it processes on heavily optimized `NSString` arrays and avoids Swift's character iterators (`O(N^2)` scaling).
+    // 2. Open streaming parser
+    parser := NewSQLFileParser()
+    stmtChan, errChan := parser.ParseFile(actualPath, encoding)
 
-## 4. Execution Sink (`PluginImportDataSink`)
-- The driver receives the yielded strings from the parser stream.
-- The default behavior wraps the entire process in `sink.disableForeignKeyChecks()`, `sink.beginTransaction()`, loops the inserts, and then `sink.commitTransaction()`, `sink.enableForeignKeyChecks()`.
-- Error handling logs intermediate progress to the UI and ensures if the 50,000th statement fails, the user is visibly told exactly where the dump crashed.
+    // 3. Execute in transaction
+    driver.BeginTransaction()
+    driver.Execute(driver.DialectInfo().DisableFKChecks)
 
-## Qt/C++ Migration Guidelines
-- **Gunzip**: You can replace the UNIX subprocess call with Qt's built-in `QProcess` pointing to `gunzip`, or use `zlib` / `qCompress` directly on streams if preferred.
-- **Streaming Parser**: The chunked 64KB FSM (Finite State Machine) pattern must be ported to C++ to avoid memory limits. A `QFile` reading `64 * 1024` byte blocks into a `QByteArray`, parsing looking for `;` outside of quotes/comments, is identical.
-- **Throttling**: The `ProgressUpdateCoalescer` in Swift should map to a Qt mechanism where progress updates are emitted as Signals, but a `QTimer` throttles actual UI repaints to ~15-30fps.
+    processed := 0
+    for stmt := range stmtChan {
+        if err := driver.Execute(stmt.Text); err != nil {
+            driver.RollbackTransaction()
+            runtime.EventsEmit(is.ctx, "import:error", ImportError{
+                Line: stmt.LineNumber, Message: err.Error(), Processed: processed,
+            })
+            return err
+        }
+        processed++
+        if processed%100 == 0 {
+            runtime.EventsEmit(is.ctx, "import:progress", ImportProgress{
+                Processed: processed, Status: fmt.Sprintf("Executing statement %d", processed),
+            })
+        }
+    }
+
+    driver.Execute(driver.DialectInfo().EnableFKChecks)
+    driver.CommitTransaction()
+    runtime.EventsEmit(is.ctx, "import:complete", processed)
+    return nil
+}
+```
+
+## 2. Gzip Decompression
+```go
+func decompressIfNeeded(path string) (string, func(), error) {
+    if !strings.HasSuffix(path, ".gz") {
+        return path, nil, nil
+    }
+
+    // Use Go's compress/gzip — pure Go, no subprocess needed
+    gzFile, _ := os.Open(path)
+    defer gzFile.Close()
+    gzReader, _ := gzip.NewReader(gzFile)
+    defer gzReader.Close()
+
+    tmpFile, _ := os.CreateTemp("", "tablepro-import-*.sql")
+    io.Copy(tmpFile, gzReader)
+    tmpFile.Close()
+
+    cleanup := func() { os.Remove(tmpFile.Name()) }
+    return tmpFile.Name(), cleanup, nil
+}
+```
+> **Advantage over Swift**: Go's `compress/gzip` is pure Go — no subprocess (`gunzip`) needed. Works on all platforms.
+
+## 3. Streaming SQL Parser (Go)
+```go
+type SQLFileParser struct{}
+
+type Statement struct {
+    Text       string
+    LineNumber int
+}
+
+func (p *SQLFileParser) ParseFile(path string, encoding string) (<-chan Statement, <-chan error) {
+    stmtChan := make(chan Statement, 100) // buffered channel
+    errChan := make(chan error, 1)
+
+    go func() {
+        defer close(stmtChan)
+        defer close(errChan)
+
+        file, err := os.Open(path)
+        if err != nil { errChan <- err; return }
+        defer file.Close()
+
+        reader := bufio.NewReaderSize(file, 64*1024) // 64KB buffer
+        var current strings.Builder
+        state := stateNormal
+        line := 1
+        stmtStartLine := 1
+        hasContent := false
+
+        for {
+            r, _, err := reader.ReadRune()
+            if err == io.EOF { break }
+            if err != nil { errChan <- err; return }
+
+            if r == '\n' { line++ }
+
+            switch state {
+            case stateNormal:
+                // Handle --, /* */, ', ", `, ;
+                // Same FSM as Swift's SQLFileParser
+            case stateSingleLineComment:
+                if r == '\n' { state = stateNormal }
+            case stateMultiLineComment:
+                // Track */ to exit
+            case stateSingleQuote, stateDoubleQuote, stateBacktick:
+                // Track escape sequences and closing quotes
+            }
+
+            if r == ';' && state == stateNormal && hasContent {
+                text := strings.TrimSpace(current.String())
+                stmtChan <- Statement{Text: text, LineNumber: stmtStartLine}
+                current.Reset()
+                hasContent = false
+            }
+        }
+
+        // Emit final statement if any
+        if hasContent {
+            stmtChan <- Statement{Text: strings.TrimSpace(current.String()), LineNumber: stmtStartLine}
+        }
+    }()
+
+    return stmtChan, errChan
+}
+```
+
+## 4. Progress Throttling
+- Go emits progress every 100 statements
+- React uses `useThrottle(progress, 66)` to cap UI updates at ~15fps
+- Import dialog shows: progress bar, processed count, current status
+
+## 5. Cancellation
+- React calls `ImportService.CancelImport()`
+- Go closes a `context.Done()` channel
+- Parser goroutine checks `select { case <-ctx.Done(): return }` in its loop
+- Driver rolls back the transaction

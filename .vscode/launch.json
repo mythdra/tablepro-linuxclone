@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Wails App",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/main.go"
+    },
+    {
+      "name": "Frontend Tests",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/frontend/node_modules/vitest/vitest.mjs",
+      "cwd": "${workspaceFolder}/frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "test"]
+    }
+  ]
+}

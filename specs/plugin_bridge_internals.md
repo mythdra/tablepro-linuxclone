@@ -1,52 +1,63 @@
-# Plugin Bridge & Data Serialization
+# Driver Integration (Go — replaces Plugin Bridge)
 
-TablePro uses a dynamic plugin architecture to keep the core binary small and licensing clean (some databases require GPL drivers, which must be dynamically linked separate plugins). The Qt/C++ rewrite will achieve this using `QPluginLoader`.
+## Overview
+In the Swift version, `PluginDriverAdapter` bridged the `PluginDatabaseDriver` (from dynamic `.tableplugin` bundles) to the app's internal `DatabaseDriver` protocol. In the Go rewrite, this bridge layer is **eliminated** — all drivers implement the same Go `DatabaseDriver` interface directly.
 
-## 1. The Interface Boundary
+## Why No Bridge Needed
+- Swift needed bridging because plugins were compiled separately as dynamic bundles
+- Go drivers are compiled into the same binary — they share the same type system
+- No serialization/deserialization overhead between plugin ↔ app
+- No `dlopen`/`QPluginLoader` equivalent needed
 
-### `PluginDatabaseDriver`
-The core application only knows about an abstract interface `PluginDatabaseDriver`. Every database driver (e.g., `PostgreSQLDriverPlugin`) implements this interface and gets compiled into a `.dylib`, `.so`, or `.dll`.
+## Driver Registration
+```go
+// internal/driver/registry.go
+type DriverFactory func() DatabaseDriver
 
-```cpp
-// Example Qt Interface
-class DatabaseDriverPlugin {
-public:
-    virtual ~DatabaseDriverPlugin() = default;
-    virtual void connect(const QVariantMap& config) = 0;
-    virtual void disconnect() = 0;
-    virtual QVariantMap fetchMetadata(const QString& table) = 0;
-    virtual QList<QVariantMap> executeQuery(const QString& sql) = 0;
-};
-
-#define DatabaseDriverPlugin_iid "com.tablepro.DatabaseDriverPlugin"
-Q_DECLARE_INTERFACE(DatabaseDriverPlugin, DatabaseDriverPlugin_iid)
+var registry = map[DatabaseType]DriverFactory{
+    "postgres":   func() DatabaseDriver { return NewPostgresDriver() },
+    "mysql":      func() DatabaseDriver { return NewMySQLDriver() },
+    "sqlite":     func() DatabaseDriver { return NewSQLiteDriver() },
+    "duckdb":     func() DatabaseDriver { return NewDuckDBDriver() },
+    "mssql":      func() DatabaseDriver { return NewMSSQLDriver() },
+    "clickhouse": func() DatabaseDriver { return NewClickHouseDriver() },
+    "mongodb":    func() DatabaseDriver { return NewMongoDriver() },
+    "redis":      func() DatabaseDriver { return NewRedisDriver() },
+}
 ```
 
-## 2. Parameter Passing (Config -> Plugin)
-When establishing a connection, the core application cannot safely pass its internal memory models (`DatabaseConnection` structs) across the dynamic library boundary due to potential ABI incompatibilities or version mismatches.
+## Build Tags for Optional Drivers
+Heavy drivers (Oracle, MongoDB) can be excluded from builds:
+```go
+//go:build oracle
+// +build oracle
 
-Instead, the connection model must be serialized into a flat key-value map (`QVariantMap`), passed across the C-boundary, and unpacked by the plugin.
+package driver
 
-Keys include:
-- `"host"` -> String
-- `"port"` -> Integer
-- `"database"` -> String
-- `"username"` -> String
-- `"password"` -> String
-- `"ssl_mode"` -> String Enum ("require", "prefer", "disable")
+func init() {
+    registry["oracle"] = func() DatabaseDriver { return NewOracleDriver() }
+}
+```
+Build with: `go build -tags "oracle"` to include Oracle support.
 
-## 3. Data Returning (Plugin -> Results Grid)
-When executing `SELECT * FROM massive_table`, the plugin must return the result set back to the core UI efficiently. 
+## Driver Lifecycle
+```go
+// Creating a session
+driver := NewDriver("postgres")
+driver.Connect(config)
+defer driver.Disconnect()
 
-### Current Swift Approach
-The C driver returns an array of dictionaries `[[String: Any]]`. The `Any` value handles type erasure (Int, String, Double, Blob, Dates). 
+// All operations go directly through the interface
+result, err := driver.Execute("SELECT * FROM users LIMIT 10")
+tables, err := driver.FetchTables("public")
+```
 
-### Qt Rewrite Optimization Strategy
-Passing thousands of small `QVariantMap` dictionaries across the boundary allocates massive amounts of RAM and fragments the heap. 
-- **Better Approach**: The plugin should return data using a Columnar Matrix format (`QVector<QVariantList>` where each list represents an entire column of data, or `QAbstractTableModel` passing raw pointers). 
-- If sticking to rows, use `QList<QVariantList>` where the outer index is the row, inner index is column. A separate `QList<QString>` passes the column names once to save memory. 
-
-## 4. Generating SQL within the Plugin
-The current `DataChangeManager` delegates dialect-specific statement generation to the core app for standard SQL (Postgres, MySQL, SQLite). 
-
-However, for NoSQL or specialized engines (e.g., Redis, MongoDB), the driver plugin is entirely responsible for mutating data. If the user edits a cell in the Mongo grid, the core app passes the `RowChange` delta to the plugin's `generateStatements` method, which generates `db.collection.updateOne(...)` syntax and immediately executes it.
+## Comparison with Swift Plugin System
+| Aspect | Swift (Plugins) | Go (Interface) |
+|---|---|---|
+| Loading | Runtime `Bundle.load()` | Compile-time linking |
+| Serialization | JSON/Codable across process boundary | Direct Go types |
+| Error handling | Plugin crashes isolated | Same process (handle with `recover()`) |
+| Distribution | Separate `.tableplugin` files | Single binary |
+| Hot-reload | Possible (reload bundle) | Requires rebuild |
+| Cross-platform | macOS only | macOS + Windows + Linux |

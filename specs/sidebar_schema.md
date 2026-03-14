@@ -1,43 +1,96 @@
-# Schema Sidebar Internals
+# Sidebar Schema Internals (React + Go)
 
-This document details the mechanics of the left-hand Sidebar, which displays Database Tables, Views, and handles batch operations.
+## Overview
+The sidebar displays the database schema tree. Go fetches schema data lazily, caches it, and serves it to the React tree component.
 
-## 1. Lazy Loading & Caching (`TableFetcher`)
-When a database connection succeeds, the sidebar does not instantly spam queries to fetch every table unless the user actually opens that connection tab.
-- **Provider Mechanism**: `LiveTableFetcher` delegates to `SQLSchemaProvider`. It first checks an in-memory application cache to see if the table list was already fetched during this session.
-- **Query Fallback**: If missing, it asks the active `PluginDatabaseDriver` to run its specific metadata query (e.g., querying `information_schema.tables` or `SHOW TABLES`).
+## 1. Lazy Loading Pattern
+```go
+type SchemaCache struct {
+    mu       sync.RWMutex
+    schemas  map[string]*SchemaInfo  // cached per database
+    tables   map[string][]TableInfo  // cached per schema
+    expiry   time.Duration           // default 5 minutes
+}
 
-## 2. Visual Representation & Badging (`TableRow`)
-- **Icons**: Standard tables use a system `tablecells` icon (blue). Views use an `eye` icon (purple).
-- **Status Badges**: If a user queues a Table for a destructive operation, an overlay badge appears over the icon:
-  - **Pending Delete/Drop**: `minus.circle.fill` (Red)
-  - **Pending Truncate**: `exclamationmark.circle.fill` (Orange)
-- **Accessibility**: VoiceOver automatically merges the status badge state into the row description (e.g., "Table: USERS, pending delete").
+func (sc *SchemaCache) GetTables(connectionID uuid.UUID, schema string) ([]TableInfo, error) {
+    sc.mu.RLock()
+    if cached, ok := sc.tables[schema]; ok {
+        sc.mu.RUnlock()
+        return cached, nil
+    }
+    sc.mu.RUnlock()
 
-## 3. Client-Side Search (`SidebarViewModel`)
-- The "Filter Tables" search box does not issue SQL `LIKE` queries to the database.
-- It operates strictly as an in-memory `.filter { $0.name.localizedCaseInsensitiveContains(debouncedSearchText) }`.
-- Empty state transitions gracefully between "No tables exist in database" vs "No matching tables for search".
+    // Cache miss — fetch from driver
+    tables, err := driver.FetchTables(schema)
+    if err != nil {
+        return nil, err
+    }
 
-## 4. Batch Operations Pipeline
-Users can multi-select (`Command`+Click or `Shift`+Click) rows in the `QTreeView`/`QListView`.
-- **Queuing**: Right-clicking and selecting `Truncate` or `Delete` does *not* execute SQL. It adds the table names to `pendingTruncates` or `pendingDeletes` Sets.
-- **Toggle Cancellation**: If a user selects tables that are *already* pending truncation, and clicks Truncate again, it silently un-queues them (removes from the Set).
-- **Confirmation Dialog**: Adding a new pending operation spawns a `TableOperationDialog`, asking for parameters (e.g., "CASCADE" options for PostgreSQL).
+    sc.mu.Lock()
+    sc.tables[schema] = tables
+    sc.mu.Unlock()
 
-## 5. Context Menu Specifications
-The Context Menu explicitly disables actions depending on context (e.g., `isReadOnly` Safe Mode, or whether the item is a View).
-Required Actions:
-1. **Create New View**: Always available unless `isReadOnly`.
-2. **Edit View Definition**: Only visible if clicked item `type == .view`.
-3. **Show Structure**: Opens the table configuration tab instead of the data grid.
-4. **Copy Name**: Comma-separates all selected table names to clipboard.
-5. **Export...**: Spawns Export Dialog for the selected tables.
-6. **Import...**: Only visible if the Plugin Driver explicitly `supportsImport()`.
-7. **Truncate**: Disabled for Views. Available for multi-selection.
-8. **Drop View / Delete Table**: Contextually renamed based on entity type.
+    return tables, nil
+}
+```
 
-## Qt/C++ Migration Guidelines
-- Use `QTreeView` or `QListView` with a `QSortFilterProxyModel` for the client-side filtering.
-- Context menus should be built dynamically in `contextMenuEvent` intercepting the clicked `QModelIndex`.
-- Badges and Text Colors (Red/Orange pending states) should be handled inside `QAbstractListModel::data()` returning colors for `Qt::ForegroundRole` and combining icons in `Qt::DecorationRole`.
+## 2. React Tree Component
+```typescript
+// Using a recursive tree with expand/collapse
+function SchemaTree({ schemas }: { schemas: SchemaInfo[] }) {
+  return schemas.map(schema => (
+    <TreeNode key={schema.name} label={schema.name}>
+      <LazyTreeSection
+        label="Tables"
+        icon={<TableIcon />}
+        loadFn={() => GetTables(connectionId, schema.name)}
+        renderItem={(table) => (
+          <TableNode table={table} onDoubleClick={() => openTable(table)} />
+        )}
+      />
+      <LazyTreeSection label="Views" icon={<ViewIcon />}
+        loadFn={() => GetViews(connectionId, schema.name)} />
+      <LazyTreeSection label="Routines" icon={<FunctionIcon />}
+        loadFn={() => GetRoutines(connectionId, schema.name)} />
+    </TreeNode>
+  ));
+}
+```
+
+## 3. Client-Side Search
+```typescript
+const [searchQuery, setSearchQuery] = useState('');
+const filteredTables = useMemo(() =>
+  allTables.filter(t =>
+    t.name.toLowerCase().includes(searchQuery.toLowerCase())
+  ),
+  [allTables, searchQuery]
+);
+```
+- Search input at top of sidebar
+- Filters across all schemas in real-time
+- Highlights matching text in results
+
+## 4. Context Menu (Right-Click)
+```typescript
+const contextMenuItems = [
+  { label: 'Open Table', action: () => openTable(table) },
+  { label: 'Copy Name', action: () => clipboard.writeText(table.name) },
+  { separator: true },
+  { label: 'Truncate Table...', action: () => confirmTruncate(table), danger: true },
+  { label: 'Drop Table...', action: () => confirmDrop(table), danger: true },
+  { separator: true },
+  { label: 'Show DDL', action: () => showDDL(table) },
+];
+```
+
+## 5. Cache Invalidation
+- After any DDL operation (DROP, CREATE, ALTER), Go calls `SchemaCache.Invalidate(schema)`
+- Emits `runtime.EventsEmit(ctx, "schema:refresh")` → React re-fetches tree
+- Manual refresh button in sidebar header
+
+## 6. Batch Operations
+- Multi-select tables (Cmd+Click / Shift+Click)
+- Right-click → "Drop Selected" / "Truncate Selected"
+- Confirmation dialog listing all selected tables
+- Go executes operations sequentially in a transaction

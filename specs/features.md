@@ -1,88 +1,129 @@
-# Exhaustive Feature Specification: TablePro
+# Features Specification (Go + Wails + React)
 
-This document lists every discrete feature, configuration option, and UI capability that must be built in the Qt/C++ rewrite to achieve parity with the current TablePro macOS application.
+Exhaustive list of every discrete feature the new TablePro must implement.
 
 ## 1. Connection Management
-- **Connection Groups**: Grouping connections visually in the sidebar.
-- **Color Tags**: 8 preset colors to visually distinct connections (red, orange, yellow, green, blue, purple, pink, gray).
-- **Environment Tags**: Tag connections for easy filtering (e.g., Prod, Dev, Staging).
-- **Database Types Supported**: 
-  - Relational: MySQL, MariaDB, PostgreSQL, SQLite, MS SQL Server, Oracle, ClickHouse, DuckDB, Redshift.
-  - NoSQL/K-V: MongoDB, Redis.
-  *Downloadable Plugins System*: Certain drivers (Oracle, ClickHouse) are optionally downloaded to reduce binary size.
+- [ ] Create, edit, duplicate, delete database connections
+- [ ] Connection groups and color tags
+- [ ] Test connection before saving
+- [ ] Import connection from URL string (including `scheme+ssh://` format)
+- [ ] Deep linking: `tablepro://` URL scheme opens connections
+- [ ] Secure password storage via OS Keychain (`go-keyring`)
+- [ ] SSH tunnel setup (password, key file, SSH agent)
+- [ ] SSL/TLS configuration (CA cert, client cert, client key)
+- [ ] Startup commands (executed after connect)
+- [ ] Safe Mode levels (require WHERE clause for UPDATE/DELETE)
+- [ ] `.pgpass` file detection and permission warning
 
-### Connection Configuration Fields
-- **Basic:** Host, Port, Database, Username, Password.
-- **File-based (SQLite/DuckDB):** File path picker to local `.db`/`.sqlite` files.
-- **SSL Configurations:**
-  - Modes: Disabled, Preferred, Required, Verify CA, Verify Identity.
-  - Custom Paths: CA Certificate, Client Certificate, Client Key.
-- **SSH Tunneling:**
-  - Standard Tunnel: Host, Port, Username, Auth Method (Password, Private Key, SSH Agent).
-  - Jump Hosts (Bastions): Ability to configure multiple chained jump hosts with their own Auth methods (Agent/Key).
-  - Agent Sock: System Default, 1Password (`~/.1password/agent.sock`), or Custom Path.
-  - Passphrase support for private keys.
-- **Advanced / Specific:**
-  - Startup Commands: Run custom SQL statements immediately after connection (e.g., `SET time_zone = '+00:00'`).
-  - Pre-Connect Script: Run a shell script *before* the connection is made; abort if exit code != 0.
-  - Pgpass Support: Auto-detect and parse `~/.pgpass` for PostgreSQL credentials.
-  - Safe Mode Levels: Restrict query execution.
-    - Silent: No restrictions.
-    - Read-Only: Blocks all UPDATE/INSERT/DELETE/DROP statements entirely.
-    - Confirm Prompt: Pops a dialog to confirm execution of any write query, or any query altogether depending on level.
-  - AI Policy: Override global AI settings on a per-connection basis.
-  - MongoDB specifics: Auth Source, Read Preference, Write Concern.
-  - Custom Connection String parser (`postgresql://user:pass@host:5432/db`).
-
-## 2. Main Windows & Tabs
-- **Native Tabs Strategy**: Uses standard macOS-like Tabs (or custom Qt Tabs) per connection window.
-- **Session Restoration**: Application remembers opened tabs and their SQL contents across restarts (serializes to JSON).
-- **Tab Types**:
-  - `Table Tab`: Browsing tabular data.
-  - `Query Tab`: Blank SQL editor.
-  - `Structure Tab`: Viewing/editing table DDL, indexes, and foreign keys.
+## 2. Database Navigation (Sidebar)
+- [ ] Database/schema tree with lazy loading
+- [ ] Tables, Views, Routines as collapsible groups
+- [ ] Real-time search filtering
+- [ ] Right-click context menu: Open, Copy Name, Drop, Truncate, Show DDL
+- [ ] Batch operations: multi-select drop/truncate with confirmation
+- [ ] Visual indicators for table types (icon differentiation)
+- [ ] Database switcher dropdown in toolbar
 
 ## 3. SQL Editor
-- **Tree-sitter Highlighting**: Real-time syntax highlighting resilient to massive single-line SQL dumps (capped at 10k chars per line for perf).
-- **Autocomplete (IntelliSense)**: Context-aware suggestions pulling from the cached database schema (Tables, Columns, Keywords).
-- **Multi-Cursor & Vim Mode**: Natively toggleable Vim keybindings and block-cursor mode.
-- **AI Integrations**:
-  - Inline Context Menu: Right-click selected SQL to "Explain with AI" or "Optimize with AI".
-  - AI Chat Panel: A collapsable right sidebar for conversational generation of SQL queries using the current DB schema as context.
-- **Execution Logic**:
-  - "Run Current": Automatically extracts the statement under the cursor (split by `;`) and executes only that.
-  - "Run Selection": Executes only the dragged text.
-  - Auto-Pagination: Appends `LIMIT 10000` under the hood if the user's SELECT query lacks a limit clause.
-- **Explain Plan**: Dedicated button to run `EXPLAIN` (or `EXPLAIN QUERY PLAN`, `EXPLAIN ANALYZE` depending on dialect) and view the AST/Plan output in a specialized tree or text view.
+- [ ] Monaco Editor with SQL syntax highlighting
+- [ ] Autocomplete: table names, column names, SQL keywords
+- [ ] Multi-cursor editing (Cmd+Click)
+- [ ] Execute current statement (Cmd+R)
+- [ ] Execute all statements (Cmd+Shift+R)
+- [ ] Execute selected text only
+- [ ] Statement splitting (semicolon-aware, respecting strings/comments)
+- [ ] Vim mode toggle
+- [ ] SQL formatting / beautification
+- [ ] Line numbers, minimap
+- [ ] Auto-capitalize SQL keywords
+- [ ] Find and Replace (Cmd+F)
 
-## 4. Data Grid & Results
-- **Pagination**: Grid isn't infinitely rendered. Uses explicit offset/limit pages or Infinite Scroll mechanisms fetching batches.
-- **Sorting**: Server-side sorting by clicking column headers. Emits precise `ORDER BY {col} {ASC/DESC}`.
-- **Filtering UI**:
-  - Global Search: Filters the entire table.
-  - Column Filters: Dedicated UI input per column (e.g., `= Val`, `> Val`, `CONTAINS`, `IS NULL`). Maps to SQL `WHERE` clauses via `FilterSQLGenerator`.
-- **Inline Editing (Change Tracking)**:
-  - Double-click a cell to modify its content.
-  - UI strictly visualizes changes (delta colors: Green for New Row, Yellow for modified cell, Red for deleted row).
-  - Undo/Redo stack for un-saved cell modifications.
-  - "Save Changes" button generates the safe dialect-specific SQL (using Primary Key or hidden ROWID to ensure exact row mutation).
-- **Row Operations**: Duplicate Row, Delete selected rows, Copy Row as SQL/JSON.
+## 4. Data Grid (Query Results)
+- [ ] Virtual scrolling via AG Grid (millions of rows)
+- [ ] Column resizing, reordering, hiding
+- [ ] Click header to sort (re-executes with ORDER BY)
+- [ ] Row numbering gutter
+- [ ] Column type-aware rendering (dates, JSON, binary, null)
+- [ ] Copy cell / row / column as text
+- [ ] Inline cell editing (double-click)
+- [ ] Add new row (+ button)
+- [ ] Delete row (mark for deletion with visual strikethrough)
+- [ ] Visual change indicators (yellow=edited, green=new, red=deleted)
+- [ ] Commit changes (generates INSERT/UPDATE/DELETE SQL)
+- [ ] Discard changes
+- [ ] Undo/Redo for cell edits
+- [ ] Pagination with offset/limit controls
+- [ ] Row count display and execution time
 
-## 5. Schema Viewing & Structure
-- **Table List (Sidebar)**: Real-time filtering, schema grouping (e.g., `public`, `pg_catalog`).
-- **Structure View**:
-  - Columns: Name, Type, Nullable, Default, Auto Increment.
-  - Indexes: Name, Columns, Unique/Primary.
-  - Foreign Keys: Source, Target Table, Constraints (Cascade/Restrict).
-  - DDL Preview: Raw `CREATE TABLE ...` statement generation.
-- **DB Operations**: Create generic Database/Schema, Drop Table, Truncate Table.
+## 5. Tab Management
+- [ ] Horizontal tab bar with close buttons
+- [ ] New tab (Cmd+T)
+- [ ] Close tab (Cmd+W)
+- [ ] Switch tabs (Cmd+1..9)
+- [ ] Tab types: Query, Table, Structure
+- [ ] Tab state persistence across app restarts (JSON)
+- [ ] LRU memory eviction for inactive tabs
+- [ ] Lazy re-query when switching back to evicted tab
+- [ ] Preview tabs (single-click on sidebar item)
 
-## 6. Import & Export
-- **Exporting**: Export Table or Query Result to CSV, JSON, Markdown (MQL), SQL inserts, or XLSX native.
-- **Importing**: Import SQL dumps or CSV files directly into a specific table. Runs chunks sequentially avoiding memory blowups.
+## 6. Export
+- [ ] Export to CSV, JSON, SQL, XLSX, Markdown
+- [ ] Export current query results or entire table
+- [ ] Streaming export for large datasets
+- [ ] Configurable options per format (headers, separator, encoding)
+- [ ] Native file save dialog via Wails
 
-## 7. Global Settings & Preferences
-- **Themes**: System Sync, Light, Dark.
-- **Query History**: Automatically logs every successfully executed query. Stored in local SQLite. UI provides full-text search over history.
-- **Font & Layout**: Configurable Editor Font, Results Grid Font, and Row Height.
-- **AI Setup**: Input API Keys for OpenAI, Anthropic, or configure Custom OpenAI-compatible endpoints (Local LLM via Ollama).
+## 7. Import
+- [ ] Import from SQL dump files (.sql, .sql.gz)
+- [ ] Streaming 64KB chunk parser (handles multi-GB files)
+- [ ] Automatic gzip decompression
+- [ ] Progress bar with cancellation
+- [ ] Transaction wrapping with foreign key disable
+- [ ] Error reporting with line number
+
+## 8. Table Structure View
+- [ ] Columns tab: name, type, nullable, auto-increment, default, comment
+- [ ] Indexes tab: index name, columns, unique flag
+- [ ] Foreign Keys tab: constraint name, column, referenced table/column
+- [ ] DDL tab: raw CREATE TABLE statement
+
+## 9. Query History
+- [ ] Full-text search over executed queries (SQLite FTS5)
+- [ ] Filter by connection, database, success/failure
+- [ ] Click to re-execute a historical query
+- [ ] Auto-cleanup of old history (configurable retention)
+
+## 10. AI Integration
+- [ ] Chat panel for query generation and explanation
+- [ ] Support OpenAI, Anthropic, Ollama providers
+- [ ] Streaming markdown response rendering
+- [ ] Context-aware: inject current table schema into prompts
+- [ ] API key stored securely in Keychain
+
+## 11. Quick Switcher (Command Palette)
+- [ ] Cmd+K opens floating search
+- [ ] Search tables, views, routines across all schemas
+- [ ] Fuzzy matching
+- [ ] Navigate to selected item
+
+## 12. Settings
+- [ ] Theme: system, light, dark
+- [ ] Editor font family and size
+- [ ] Line wrapping, line numbers
+- [ ] Query timeout
+- [ ] Rows per page (pagination default)
+- [ ] Vim mode toggle
+- [ ] Auto-capitalize keywords toggle
+- [ ] Autocomplete toggle
+
+## 13. Licensing
+- [ ] Free vs Pro feature gating
+- [ ] License key input and validation
+- [ ] Ed25519 signature verification
+- [ ] Lemon Squeezy or custom backend integration
+
+## 14. Cross-Platform
+- [ ] macOS native window controls
+- [ ] Windows native title bar
+- [ ] Linux desktop integration
+- [ ] Consistent behavior across all platforms

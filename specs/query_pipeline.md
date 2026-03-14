@@ -1,45 +1,108 @@
-# Query Execution Pipeline & Row Operations
+# Query Execution Pipeline (Go Backend)
 
-This document exhaustively details the internal workings of the query builder, parsing engines, and row operation managers. The Qt/C++ rewrite must implement these specific capabilities identically for full feature parity.
+## Overview
+Query execution flows from React → Go → Database Driver → Go → React. Go handles all SQL parsing, execution, and result transformation.
 
-## 1. Table Query Builder
+## Execution Flow
+```
+React                          Go Backend                     Database
+─────                          ──────────                     ────────
+Cmd+R pressed
+  → QueryManager.Execute()  → Parse & validate SQL
+                               Check SafeMode
+                               Start timer
+                               driver.Execute(sql)  ────────→  Run query
+                                                    ←────────  Return rows
+                               Transform rows to [][]any
+                               Stop timer
+                               Return QueryResult   ←───────
+  ← Update AG Grid with data
+  ← Update status bar
+```
 
-The application dynamically generates SQL for standard browsing, sorting, and filtering operations. 
+## QueryResult Structure
+```go
+type QueryResult struct {
+    Columns       []ColumnInfo `json:"columns"`
+    Rows          [][]any      `json:"rows"`
+    RowsAffected  int64        `json:"rowsAffected"`
+    ExecutionTime float64      `json:"executionTime"` // seconds
+    ErrorMessage  string       `json:"errorMessage"`
+    IsSelect      bool         `json:"isSelect"`
+}
 
-### Core Behaviors
-- **Delegation to Plugins:** Before attempting to build native SQL, the builder first checks `pluginDriver.buildBrowseQuery()`, etc. If the specific database dialect overrides the query building process (e.g., MongoDB requires JSON strings instead of SQL), the core builder yields to the plugin.
-- **Quote Sanitization**: Uses `pluginDriver.quoteIdentifier` or defaults to duplicating double quotes `""` around column/table names to prevent SQL injection or parsing errors with spaces in column names.
-- **Sorting Insertion Algorithm (`buildSortedQuery`)**:
-  - Automatically locates existing `ORDER BY`, `LIMIT`, and `OFFSET` clauses.
-  - Strips the old `ORDER BY`.
-  - Injects the new `ORDER BY "column" ASC` *before* `LIMIT` and *before* `OFFSET`, but *after* `WHERE`.
-- **Search Capabilities**:
-  - `buildQuickSearchQuery`: Used when the user types in the top-right search box. Generates a massive `WHERE (col1 LIKE '%x%' OR col2 LIKE '%x%')`.
-  - `buildFilteredQuery`: Used for complex multi-column filters.
+type ColumnInfo struct {
+    Name     string `json:"name"`
+    Type     string `json:"type"`
+    Nullable bool   `json:"nullable"`
+}
+```
 
-## 2. Row Operations Manager
+## Pagination
+```go
+func (qm *QueryManager) ExecuteWithPagination(
+    connectionID uuid.UUID,
+    tabID uuid.UUID,
+    baseQuery string,
+    offset int,
+    limit int,
+    orderBy string,
+    orderDir string,
+) (*QueryResult, error) {
+    dialect := qm.getDialect(connectionID)
+    paginatedQuery := dialect.WrapWithPagination(baseQuery, offset, limit, orderBy, orderDir)
+    countQuery := dialect.WrapWithCount(baseQuery)
 
-This manager handles exactly what occurs when a user interacts with rows in the Data Grid.
+    // Execute both in parallel using goroutines
+    var wg sync.WaitGroup
+    var result *QueryResult
+    var totalCount int64
 
-### Batch Deletion Algorithms
-Users can shift-click multiple rows and press `Delete`.
-1. It separates the selection into two categories: `existingRows` (came from the DB) and `insertedRows` (created locally but not yet saved).
-2. It sorts the deletion indices in *descending order* so that when it removes rows from the underlying model array, the indices don't shift out from under it.
-3. `insertedRows` completely vanish from the UI and Undo stack immediately without SQL generation.
-4. `existingRows` are batched into a single `changeManager.recordBatchRowDeletion` command for Undo/Redo purposes.
-5. It then recalculates the *new cursor selection*, attempting to select the row immediately following the deleted clump.
+    wg.Add(2)
+    go func() { defer wg.Done(); result, _ = qm.execute(connectionID, paginatedQuery) }()
+    go func() { defer wg.Done(); totalCount, _ = qm.executeCount(connectionID, countQuery) }()
+    wg.Wait()
 
-### Clipboard "Paste" Pipeline
-When a user copies cells from Excel and pastes them into TablePro:
-1. **Auto-Detection (`detectParser`)**: Analyzes the raw string. If there are more `\t` (tabs) than `,` (commas), it utilizes the `TSVRowParser`. Otherwise, it uses `CSVRowParser`.
-2. **RFC 4180 Parsing**: The CSV parser implements a state-machine that respects embedded commas inside quoted fields (`"Hello, World"`). it does not blindly split by `,`.
-3. **Header Detection**: If the first row of the pasted data matches more than 50% of the destination Table's Column Names, the parser automatically discards the first row assuming it is a header row.
-4. **Column Length Correction**:
-   - If pasted data has fewer columns than the table: Pads the tail with `NULL` or default empty values.
-   - If pasted data has more columns than the table: Truncates the trailing columns entirely.
-5. **Primary Key Forgiveness**: If the destination table has an auto-increment or serial Primary Key, it automatically modifies the pasted value in that specific column index to `__DEFAULT__` regardless of what value the user copied. This ensures the database generates the key on Save, preventing unique constraint violations.
+    result.TotalRowCount = totalCount
+    return result, nil
+}
+```
 
-### Clipboard "Copy" Pipeline
-When copying massive amounts of rows from TablePro:
-- **OOM Protection**: Hardcoded to silently truncate anything over `50,000` rows maximum.
-- Generates a Tab-Separated string (`\t` delimiter, `\n` linebreaks). Contains a trailing message warning if truncation occurred.
+## Dialect-Specific Pagination
+```go
+// PostgreSQL / MySQL / SQLite / DuckDB
+SELECT * FROM "table" ORDER BY "col" LIMIT 500 OFFSET 0;
+
+// SQL Server
+SELECT * FROM [table] ORDER BY [col] OFFSET 0 ROWS FETCH NEXT 500 ROWS ONLY;
+
+// Oracle
+SELECT * FROM "table" ORDER BY "col" FETCH FIRST 500 ROWS ONLY;
+```
+
+## Concurrent Query Execution
+- Each tab executes queries on its own goroutine
+- Go `context.Context` with timeout for cancellation
+- User clicks Cancel → `context.CancelFunc()` called → driver returns immediately
+- Emit `runtime.EventsEmit(ctx, "query:cancelled", tabID)`
+
+## EXPLAIN Support
+```go
+func (qm *QueryManager) Explain(connectionID uuid.UUID, sql string) (*QueryResult, error) {
+    dialect := qm.getDialect(connectionID)
+    explainSQL := dialect.WrapWithExplain(sql)
+    // PostgreSQL: EXPLAIN ANALYZE {sql}
+    // MySQL: EXPLAIN {sql}
+    // SQLite: EXPLAIN QUERY PLAN {sql}
+    return qm.execute(connectionID, explainSQL)
+}
+```
+
+## Statement Splitting (Go)
+```go
+func SplitStatements(sql string) []Statement {
+    // Finite state machine identical to Swift's SQLFileParser
+    // States: normal, singleLineComment, multiLineComment, singleQuote, doubleQuote, backtick
+    // Yields on unquoted ';'
+}
+```

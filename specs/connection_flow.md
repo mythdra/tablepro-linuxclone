@@ -1,40 +1,105 @@
-# Connection Management & History Flow
+# Connection Management Flow (Go + Wails)
 
-This document outlines the mechanics used within TablePro for managing, storing, parsing, and testing database connection credentials.
+## 1. Connection Storage
+```go
+type ConnectionManager struct {
+    ctx         context.Context
+    connections []DatabaseConnection
+    configPath  string // ~/.config/tablepro/connections.json
+}
+```
+- **Metadata**: Connections serialized as JSON array to `~/.config/tablepro/connections.json`
+- **Passwords**: Stored in OS Keychain via `go-keyring`
+  - Key: `tablepro:password:{UUID}`, `tablepro:ssh-password:{UUID}`, `tablepro:ssh-passphrase:{UUID}`
+- **Duplicate**: Generate new UUID, suffix name with " (Copy)", copy Keychain entries to new keys
 
-## 1. Credentials Storage (`ConnectionStorage`)
-- **Metadata**: Connection properties (Host, Port, User, DB Type, SSL config) are serialized into a master JSON blob via `UserDefaults` under key `com.TablePro.connections`.
-- **Sensitive Data**: Passwords, SSH passwords, and SSH private key passphrases are **never** stored in UserDefaults. They are shifted automatically to the OS Keychain.
-  - The lookup key relies on the Connection's UUID: `com.TablePro.password.[UUID]`.
-  - The C++ port MUST utilize `qtkeychain` (Cross-Platform Keychain wrapper for Qt) to mirror this seamless segregation of metadata and sensitive auth data.
-- **Copying Connections**: When repeating a connection via "Duplicate", TablePro intercepts the copy event, regenerates a new `UUID()`, suffixes the name with " (Copy)", and actively iterates over the Keychain APIs to fetch and re-store the secrets for the new UUID.
+## 2. Connection Form (React)
+- React modal with tabs: General, SSH, SSL, Advanced
+- All form state managed locally in React (`useState`)
+- On Save: calls `ConnectionManager.Save(connection)` + `ConnectionManager.SavePassword(id, password)`
+- On Test: calls `ConnectionManager.TestConnection(config)` — returns success/error message
+- Database type dropdown dynamically shows relevant fields (e.g., MongoDB shows Auth Source)
 
-## 2. Dynamic Form Fields & Pgpass (`ConnectionFormView`)
-- Since connection payloads diverge radically per database type (e.g. MongoDB requiring `AuthSource` while Oracle requires `ServiceName`), the form observes the selected `DatabaseType` and queries the `PluginManager` for extra properties.
-- **Pgpass Integration**: For PostgreSQL, there is an asynchronous filesystem check that scans `~/.pgpass`. If the file exists but has permissions wider than `0600`, the connection form automatically displays a red UI alert instructing the user to fix their permissions.
+## 3. URL Parser (Go)
+```go
+func ParseConnectionURL(rawURL string) (*ParsedConnectionURL, error) {
+    // Handle schemes: postgres://, mysql://, mongodb://, redis://
+    // Handle SSH schemes: postgres+ssh://sshuser@bastion:22/dbuser:pass@dbhost:5432/mydb
+    // Handle query params: ?sslmode=require&statusColor=red&env=Production
 
-## 3. Deep Linking & URL Parser (`ConnectionURLParser` & `AppDelegate`)
-- **Drag & Drop / URL Import**: Users can drag complex strings like `postgres+ssh://ec2-user@bastion:22/dbuser:pass@10.0.0.1:5432/main_db`.
-- The parser destructs this into:
-  - Outer scheme (e.g., SSH jump host creds).
-  - Inner scheme (internal VPC database credentials).
-  - Extra Query parameters `?sslmode=require&statusColor=#FF0000&env=Production`.
-- **Deep Link Execution**: If TablePro is invoked via system deep link (`tablepro://...`), the `AppDelegate` catches the event.
-  - It searches `ConnectionStorage` to see if a connection *exactly matching* the host, port, db name, and user already exists.
-  - If a match exists, it fires the tab.
-  - If not, it builds a `Transient Connection` purely in memory. The connection is discarded on app close unless the user saves it.
-  - It handles delays gracefully. If the deep link requested a specific `?table=Users&column=id&operator=eq&value=5`, it awaits the `databaseDidConnect` broadcast, opens the Table Tab, waits 300ms, and fires the filter notification.
+    // Step 1: Check for "+ssh" in scheme
+    // Step 2: Split SSH and DB parts manually (url.Parse breaks on dual @)
+    // Step 3: Parse query parameters for SSL, color, environment
+    // Step 4: Return ParsedConnectionURL struct
+}
 
-## 4. Connection Testing Algorithm
-- The UI contains a "Test Connection" button.
-- When clicked:
-  - It constructs a temporary `DatabaseConnection` object using the dirty form state.
-  - It temporarily writes the in-memory form password to the Keychain under the temporary UUID.
-  - It requests the active `PluginDriver` to initiate a blocking connection sequence.
-  - **Cleanup**: It does not actively wipe the temporary Keychain entry on failure (a minor leak the Qt version might want to plug), but updates the UI with a native alert.
-  - **Auto-Installation Prompt**: If testing fails due to `.pluginNotInstalled`, the system overrides the generic failure dialog and redirects the flow to the Plugin Downloader interface.
+type ParsedConnectionURL struct {
+    DatabaseType DatabaseType
+    Host         string
+    Port         int
+    Database     string
+    Username     string
+    Password     string
+    SSHHost      string
+    SSHPort      int
+    SSHUser      string
+    SSLMode      string
+    StatusColor  string
+    Schema       string
+    TableName    string
+    FilterColumn string
+    FilterOp     string
+    FilterValue  string
+}
+```
 
-## Qt/C++ Migration Guidelines
-- **Storage**: Standardize around QSettings for metadata (JSON or INI format depending on preference), but proxy all password gets/sets to `QKeychain::ReadPasswordJob` / `QKeychain::WritePasswordJob`.
-- **URLs**: C++ lacks Swift's custom URL parser tolerances for dual `@` symbols. Consider building a manual regex sequence (as seen in `ConnectionURLParser.swift`) rather than relying purely on `QUrl`, which breaks on `scheme+ssh://user@host/dbuser@dbhost` syntax.
-- **Queueing Engine**: Reproduce the `queuedURLEntries` array mechanism to buffer deep links during the `QApplication` splash screen / loading phase before the `QMainWindow` is fully instantiated.
+## 4. Deep Linking (Wails)
+- Register `tablepro://` URL scheme in Wails app config
+- On URL received: parse with `ParseConnectionURL()`
+- Search existing connections for match (host + port + database + username)
+- If match found → open that connection
+- If no match → create transient in-memory connection
+- Queue URLs if app not fully loaded (buffer until main window ready)
+- Post-connect actions: switch schema, open table, apply filter
+
+## 5. Test Connection Flow
+```go
+func (cm *ConnectionManager) TestConnection(config DatabaseConnection) error {
+    // 1. Create driver for the database type
+    driver, err := NewDriver(config.Type)
+    if err != nil { return err }
+
+    // 2. If SSH enabled, start temporary tunnel
+    var localPort int
+    if config.SSH.Enabled {
+        tunnel := &SSHTunnel{}
+        localPort, err = tunnel.Start(config.SSH)
+        if err != nil { return fmt.Errorf("SSH tunnel failed: %w", err) }
+        defer tunnel.Close()
+        config.Host = "127.0.0.1"
+        config.Port = localPort
+    }
+
+    // 3. Attempt connection with timeout
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    return driver.TestConnection(ctx, config)
+}
+```
+
+## 6. Pgpass Detection (PostgreSQL only)
+```go
+func CheckPgpass() *PgpassWarning {
+    pgpassPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
+    info, err := os.Stat(pgpassPath)
+    if err != nil { return nil } // File doesn't exist
+    
+    mode := info.Mode().Perm()
+    if mode & 0077 != 0 { // More permissive than 0600
+        return &PgpassWarning{
+            Message: "~/.pgpass has insecure permissions. Run: chmod 600 ~/.pgpass",
+        }
+    }
+    return nil
+}
+```

@@ -1,0 +1,21 @@
+{
+  "gopls": {
+    "formatting.gofumpt": true,
+    "analyses": {
+      "unusedparams": true,
+      "shadow": true,
+      "nilness": true
+    }
+  },
+  "go.buildTags": "",
+  "go.lintTool": "golangci-lint",
+  "go.lintOnSave": "workspace",
+  "go.vetOnSave": "workspace",
+  "go.formatTool": "goimports",
+  "[go]": {
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": true
+    }
+  }
+}
