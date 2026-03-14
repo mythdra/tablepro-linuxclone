@@ -128,6 +128,51 @@ npx playwright test
 
 See [tests/README.md](tests/README.md) for detailed testing documentation.
 
+## Phase 7: Data Grid Mutation & Change Tracking
+
+### Change Tracking
+
+- Cell-level edit tracking with undo/redo (up to 100 actions)
+- Insert and delete row tracking per tab
+- Multi-tab isolation: changes in one tab don't affect others
+- Thread-safe `DataChangeManager` with `sync.RWMutex`
+- `ChangeSummary` for quick overview of pending modifications
+
+### SQL Generation
+
+- Dialect-aware SQL generation for all 6 SQL databases:
+  - **PostgreSQL/DuckDB**: `$1, $2` param markers, `"col"` quoting
+  - **MySQL**: `?` param markers, `` `col` `` quoting
+  - **SQLite/ClickHouse**: `?` param markers, `"col"` quoting
+  - **MSSQL**: `@p1, @p2` param markers, `[col]` quoting
+- Generates UPDATE, INSERT, DELETE statements
+- Composite primary key support
+- Auto-increment columns excluded from INSERT
+- NULL value handling
+- Schema-qualified table names where supported
+- Batch ordering: DELETE → UPDATE → INSERT
+
+### Transaction Commit
+
+- All changes committed in a single transaction
+- Automatic rollback on any statement failure
+- Foreign key constraint validation
+- Returns `CommitResult` with statement count and rows affected
+
+### Testing
+
+```bash
+# Unit tests (dialect, generator, manager)
+go test -v ./internal/change/...
+
+# Integration tests (requires SQLite, tests full edit→commit cycle)
+go test -tags=integration -v ./internal/change/...
+```
+
+### AG Grid
+
+The data grid uses [AG Grid Community Edition](https://www.ag-grid.com/) (MIT license) for high-performance tabular data display and inline editing.
+
 ## License
 
 MIT
