@@ -34,6 +34,23 @@ type TabChanges struct {
 	RedoStack    []ChangeAction `json:"-"`
 }
 
+// HasChanges returns true if there are any pending changes.
+func (tc *TabChanges) HasChanges() bool {
+	return len(tc.CellChanges) > 0 || len(tc.InsertedRows) > 0 || len(tc.DeletedRows) > 0
+}
+
+// Clear removes all pending changes.
+func (tc *TabChanges) Clear() {
+	tc.CellChanges = nil
+	tc.InsertedRows = nil
+	tc.DeletedRows = nil
+}
+
+// ChangeCount returns the total number of pending changes.
+func (tc *TabChanges) ChangeCount() int {
+	return len(tc.CellChanges) + len(tc.InsertedRows) + len(tc.DeletedRows)
+}
+
 // ChangeAction represents a single undoable/redoable action.
 type ChangeAction struct {
 	Type    string `json:"type"` // "update", "insert", "delete"
@@ -53,4 +70,11 @@ type ChangeSummary struct {
 	Updates int `json:"updates"`
 	Inserts int `json:"inserts"`
 	Deletes int `json:"deletes"`
+}
+
+// Statement represents a generated SQL statement with its arguments.
+type Statement struct {
+	SQL  string `json:"sql"`
+	Args []any  `json:"args"`
+	Type string `json:"type"` // "UPDATE", "INSERT", "DELETE"
 }
