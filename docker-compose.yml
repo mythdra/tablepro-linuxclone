@@ -1,0 +1,80 @@
+services:
+  # ── PostgreSQL 16 (Alpine) ──────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: tablepro-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: tablepro
+      POSTGRES_PASSWORD: tablepro123
+      POSTGRES_DB: testdb
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  # ── MySQL 8 (Oracle Linux – lightest official) ──────────
+  mysql:
+    image: mysql:8.0
+    container_name: tablepro-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_USER: tablepro
+      MYSQL_PASSWORD: tablepro123
+      MYSQL_DATABASE: testdb
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  # ── MariaDB 11 (Alpine – lighter MySQL alternative) ─────
+  mariadb:
+    image: mariadb:11
+    container_name: tablepro-mariadb
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: root123
+      MARIADB_USER: tablepro
+      MARIADB_PASSWORD: tablepro123
+      MARIADB_DATABASE: testdb
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+  # ── ClickHouse (Alpine) ─────────────────────────────────
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest-alpine
+    container_name: tablepro-clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # Native TCP
+    environment:
+      CLICKHOUSE_USER: tablepro
+      CLICKHOUSE_PASSWORD: tablepro123
+      CLICKHOUSE_DB: testdb
+    volumes:
+      - ch_data:/var/lib/clickhouse
+
+  # ── Microsoft SQL Server 2022 (no Alpine available) ─────
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: tablepro-mssql
+    restart: unless-stopped
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Tablepro@123"
+      MSSQL_PID: "Developer"
+    volumes:
+      - mssql_data:/var/opt/mssql
+
+volumes:
+  pg_data:
+  mysql_data:
+  mariadb_data:
+  ch_data:
+  mssql_data:

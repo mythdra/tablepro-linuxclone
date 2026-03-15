@@ -12,6 +12,7 @@ import {
   Loader2,
   ChevronDown,
 } from 'lucide-react';
+import { getDatabaseLabel } from './DatabaseIcon';
 import {
   connectionFormSchema,
   ConnectionFormData,
@@ -33,16 +34,7 @@ interface ConnectionFormProps {
   onCancel?: () => void;
 }
 
-const databaseIcons: Record<DatabaseType, string> = {
-  postgres: '🐘',
-  mysql: '🐬',
-  sqlite: '📦',
-  duckdb: '🦆',
-  mssql: '🏢',
-  clickhouse: '🏠',
-  mongodb: '🍃',
-  redis: '🔴',
-};
+// Database icons now provided by shared DatabaseIcon component
 
 const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'general', label: 'General', icon: <Database className="w-4 h-4" /> },
@@ -63,7 +55,7 @@ export function ConnectionForm({ initialData, onSave, onTest, onCancel }: Connec
     watch,
     setValue,
     handleSubmit,
-    formState: { errors, isDirty },
+    formState: { errors, isValid },
   } = useForm<ConnectionFormData>({
     resolver: zodResolver(connectionFormSchema) as any,
     defaultValues: initialData
@@ -73,6 +65,7 @@ export function ConnectionForm({ initialData, onSave, onTest, onCancel }: Connec
           ssl: initialData.ssl || getDefaultFormValues().ssl,
         }
       : getDefaultFormValues(),
+    mode: 'onChange',
   });
 
   const connectionType = watch('type');
@@ -146,7 +139,7 @@ export function ConnectionForm({ initialData, onSave, onTest, onCancel }: Connec
           )}
           <button
             type="submit"
-            disabled={isSaving || !isDirty}
+            disabled={isSaving}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isSaving ? (
@@ -253,7 +246,7 @@ function GeneralTab({ register, control, errors, onTypeChange, isFileBased }: Ge
               >
                 {databaseTypes.map((type) => (
                   <option key={type} value={type}>
-                    {databaseIcons[type as DatabaseType]} {type.charAt(0).toUpperCase() + type.slice(1)}
+                    {getDatabaseLabel(type as DatabaseType)}
                   </option>
                 ))}
               </select>

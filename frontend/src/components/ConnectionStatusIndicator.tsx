@@ -1,5 +1,7 @@
 import { Loader2, Wifi, WifiOff } from 'lucide-react';
 import { useSessionStore } from '../stores/sessionStore';
+import { DatabaseIcon, getDatabaseLabel } from './DatabaseIcon';
+import type { DatabaseType } from '../types';
 
 /**
  * Display status for the connection indicator.
@@ -56,16 +58,7 @@ const statusConfig: Record<
 /**
  * Database type display names and icons.
  */
-const databaseDisplay: Record<string, { name: string; icon: string }> = {
-  postgres: { name: 'PostgreSQL', icon: '🐘' },
-  mysql: { name: 'MySQL', icon: '🐬' },
-  sqlite: { name: 'SQLite', icon: '📦' },
-  duckdb: { name: 'DuckDB', icon: '🦆' },
-  mssql: { name: 'SQL Server', icon: '🏢' },
-  clickhouse: { name: 'ClickHouse', icon: '🏠' },
-  mongodb: { name: 'MongoDB', icon: '🍃' },
-  redis: { name: 'Redis', icon: '🔴' },
-};
+// Database icons and labels now provided by shared DatabaseIcon component
 
 /**
  * Component that displays real-time connection status based on session events.
@@ -133,7 +126,8 @@ export function ConnectionStatusIndicator({
   const config = statusConfig[status];
 
   // Get database display info
-  const dbInfo = session?.databaseType ? databaseDisplay[session.databaseType] : null;
+  const dbType = session?.databaseType as DatabaseType | undefined;
+  const dbLabel = dbType ? getDatabaseLabel(dbType) : null;
 
   if (compact) {
     return (
@@ -175,10 +169,10 @@ export function ConnectionStatusIndicator({
       )}
 
       {/* Database type */}
-      {session && showDatabaseType && dbInfo && (
-        <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-800 rounded text-xs text-slate-400">
-          <span>{dbInfo.icon}</span>
-          <span>{dbInfo.name}</span>
+      {session && showDatabaseType && dbType && (
+        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-800 rounded text-xs text-slate-400">
+          <DatabaseIcon type={dbType} size="sm" />
+          <span>{dbLabel}</span>
         </div>
       )}
     </div>

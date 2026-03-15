@@ -1,26 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #3B82F6;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+  --color-surface: #1E293B;
+  --color-background: #0F172A;
+  --color-cta: #22C55E;
+}
+
+@custom-variant dark (&:is(.dark *));
+
 html {
-    background-color: rgba(27, 38, 54, 1);
-    text-align: center;
+    background-color: #0F172A;
     color: white;
 }
 
 body {
     margin: 0;
     color: white;
-    font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
-    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
-}
-
-@font-face {
-    font-family: "Nunito";
-    font-style: normal;
-    font-weight: 400;
-    src: local(""),
-    url("assets/fonts/nunito-v16-latin-regular.woff2") format("woff2");
+    font-family: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
+    "Oxygen", "Ubuntu", "Cantarell", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 #app {
     height: 100vh;
-    text-align: center;
 }

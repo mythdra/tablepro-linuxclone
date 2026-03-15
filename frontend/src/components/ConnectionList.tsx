@@ -12,18 +12,10 @@ import {
   Plus,
   FolderOpen,
 } from 'lucide-react';
-import type { DatabaseConnection, ConnectionStatus, DatabaseType } from '../types';
+import { DatabaseIcon } from './DatabaseIcon';
+import type { DatabaseConnection, ConnectionStatus } from '../types';
 
-const databaseIcons: Record<DatabaseType, string> = {
-  postgres: '🐘',
-  mysql: '🐬',
-  sqlite: '📦',
-  duckdb: '🦆',
-  mssql: '🏢',
-  clickhouse: '🏠',
-  mongodb: '🍃',
-  redis: '🔴',
-};
+// Database icons now provided by shared DatabaseIcon component
 
 const statusColors: Record<ConnectionStatus, string> = {
   disconnected: 'bg-slate-500',
@@ -159,9 +151,7 @@ export function ConnectionList({
                             title={statusLabels[status]}
                           />
 
-                          <span className="text-lg">
-                            {databaseIcons[connection.type]}
-                          </span>
+                          <DatabaseIcon type={connection.type} size="md" />
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">

@@ -1,4 +1,5 @@
 import React from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const PAGE_SIZE_OPTIONS = [100, 500, 1000, 5000] as const;
 
@@ -33,20 +34,8 @@ export function PaginationBar({
   };
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '6px 12px',
-        borderTop: '1px solid #e5e7eb',
-        fontSize: '13px',
-        color: '#374151',
-        backgroundColor: '#f9fafb',
-        flexShrink: 0,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+    <div className="flex items-center justify-between px-3 py-1.5 border-t border-slate-700 text-xs text-slate-400 bg-[#1E293B] shrink-0">
+      <div className="flex items-center gap-3">
         <span>
           Rows {startRow.toLocaleString()}-{endRow.toLocaleString()} of{' '}
           {countPrefix}
@@ -54,61 +43,39 @@ export function PaginationBar({
         </span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div className="flex items-center gap-2">
         <button
           onClick={() => onPageChange(page - 1)}
           disabled={!hasPrev}
-          style={{
-            padding: '2px 8px',
-            border: '1px solid #d1d5db',
-            borderRadius: '4px',
-            backgroundColor: hasPrev ? '#ffffff' : '#f3f4f6',
-            color: hasPrev ? '#374151' : '#9ca3af',
-            cursor: hasPrev ? 'pointer' : 'default',
-            fontSize: '13px',
-          }}
+          className="p-1 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-default transition-colors cursor-pointer"
           aria-label="Previous page"
         >
-          Previous
+          <ChevronLeft className="w-4 h-4" />
         </button>
 
-        <span style={{ minWidth: '80px', textAlign: 'center' }}>
+        <span className="min-w-[80px] text-center">
           Page {page} / {totalPages}
         </span>
 
         <button
           onClick={() => onPageChange(page + 1)}
           disabled={!hasNext}
-          style={{
-            padding: '2px 8px',
-            border: '1px solid #d1d5db',
-            borderRadius: '4px',
-            backgroundColor: hasNext ? '#ffffff' : '#f3f4f6',
-            color: hasNext ? '#374151' : '#9ca3af',
-            cursor: hasNext ? 'pointer' : 'default',
-            fontSize: '13px',
-          }}
+          className="p-1 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-default transition-colors cursor-pointer"
           aria-label="Next page"
         >
-          Next
+          <ChevronRight className="w-4 h-4" />
         </button>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <label htmlFor="page-size-select" style={{ fontSize: '13px' }}>
+      <div className="flex items-center gap-2">
+        <label htmlFor="page-size-select">
           Rows per page:
         </label>
         <select
           id="page-size-select"
           value={pageSize}
           onChange={handlePageSizeChange}
-          style={{
-            padding: '2px 6px',
-            border: '1px solid #d1d5db',
-            borderRadius: '4px',
-            backgroundColor: '#ffffff',
-            fontSize: '13px',
-          }}
+          className="px-2 py-1 bg-slate-800 border border-slate-600 rounded text-xs text-slate-300 cursor-pointer focus:outline-none focus:border-slate-500"
         >
           {PAGE_SIZE_OPTIONS.map((size) => (
             <option key={size} value={size}>

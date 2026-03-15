@@ -1,4 +1,4 @@
-.PHONY: dev build build-all test lint clean
+.PHONY: dev build build-all test lint clean up down
 
 dev:
 	wails dev
@@ -23,3 +23,9 @@ clean:
 	rm -rf build/
 	go clean
 	cd frontend && rm -rf node_modules/ dist/
+
+up:
+	docker-compose up -d
+
+down:
+	docker-compose down
