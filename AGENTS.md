@@ -1,460 +1,854 @@
 # TablePro - AGENTS.md
 
-Development guide for AI agents working on TablePro (Go + Wails + React database client).
+Development guide for AI agents working on TablePro (C++20 + Qt 6.6 database client).
 
 ## Project Overview
 
-TablePro is a cross-platform database client targeting macOS, Windows, and Linux as a single binary (~15-20MB).
+TablePro is a native cross-platform database client targeting macOS, Windows, and Linux.
 
 **Architecture:**
-- **Backend**: Go with Wails v2 runtime
-- **Frontend**: React + TypeScript rendered in Wails WebView
-- **Communication**: Wails RPC (Go methods bound to TypeScript) + Events (pub/sub)
-- **Specs**: All specifications in `/specs/` and `/openspec/specs/`
+- **Language**: C++20
+- **GUI Framework**: Qt 6.6 LTS (Qt Widgets)
+- **Build System**: CMake 3.24+ + vcpkg
+- **Database Drivers**: Qt SQL + native C libraries (libpq, libmysql, etc.)
+- **Specs**: All specifications in `/specs/`
 
 ## Build & Development Commands
 
 ### Project Setup
 ```bash
-# Initialize Go module (when starting implementation)
-go mod init github.com/tablepro/tablepro
+# Install vcpkg (if not already installed)
+git clone https://github.com/microsoft/vcpkg.git
+cd vcpkg && ./bootstrap-vcpkg.sh
 
-# Install Wails CLI
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
+# Set VCPKG_ROOT environment variable
+export VCPKG_ROOT=/path/to/vcpkg
 
-# Initialize Wails project
-wails init -n tablepro -t react
-
-# Install frontend dependencies
-cd frontend && npm install
+# Install Qt6 and dependencies via vcpkg
+vcpkg install qt6-base qt6-svg qt6-tools qt6-translation
+vcpkg install libpq libmysql sqlite3 duckdb hiredis
+vcpkg install libssh2 openssl qkeychain
 ```
 
-### Build Commands
+### Configure & Build
 ```bash
-# Development mode with hot reload
-wails dev
+# Create build directory
+mkdir build && cd build
 
-# Production build
-wails build
+# Configure with CMake (Debug)
+cmake .. -DCMAKE_BUILD_TYPE=Debug \
+         -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
 
-# Production build for specific platforms
-wails build -platform darwin
-wails build -platform windows
-wails build -platform linux
+# Configure with CMake (Release)
+cmake .. -DCMAKE_BUILD_TYPE=Release \
+         -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+
+# Build
+cmake --build . --parallel 8
+
+# Run application
+./tablepro          # macOS/Linux
+Debug\tablepro.exe  # Windows
 ```
 
 ### Testing
 ```bash
-# Run all tests
-go test ./...
+# Run all tests via CTest
+ctest --output-on-failure
 
-# Run tests with coverage
-go test -cover ./...
+# Run specific test
+ctest -R DriverTest --verbose
 
-# Run single test
-go test -run TestName ./internal/driver/
-
-# Run tests with verbose output
-go test -v ./...
-
-# Frontend tests (when implemented)
-cd frontend && npm test
+# Run tests with coverage (if enabled)
+cmake .. -DENABLE_COVERAGE=ON
+cmake --build .
+ctest --coverage
 ```
 
 ### Linting & Formatting
 ```bash
-# Go formatting
-go fmt ./...
+# Format C++ code
+clang-format -i src/**/*.cpp src/**/*.hpp
 
-# Go linting
-go vet ./...
-golangci-lint run
+# Check formatting without modifying
+clang-format --dry-run --Werror src/**/*.cpp src/**/*.hpp
 
-# Frontend formatting
-cd frontend && npm run format
+# Run clang-tidy
+clang-tidy src/**/*.cpp -- -Iinclude
 
-# Frontend linting
-cd frontend && npm run lint
+# CMake lint
+cmake-format -i CMakeLists.txt
 ```
 
-## Go Coding Conventions
+### Qt-Specific Commands
+```bash
+# Run Qt Designer on .ui files
+designer src/ui/ConnectionDialog.ui
 
-### Import Organization
-```go
-import (
-    // Standard library
-    "context"
-    "database/sql"
-    "encoding/json"
-    "fmt"
+# Update Qt translations
+lupdate src -ts translations/tablepro_en.ts
 
-    // Third-party packages
-    "github.com/jackc/pgx/v5"
-    "github.com/wailsapp/wails/v2/pkg/runtime"
+# Deploy on macOS
+macdeployqt tablepro.app
 
-    // Internal packages
-    "github.com/tablepro/tablepro/internal/driver"
-    "github.com/tablepro/tablepro/internal/connection"
-)
+# Deploy on Windows
+windeployqt tablepro.exe
+```
+
+## C++ Coding Conventions
+
+### Include Organization
+```cpp
+// 1. Corresponding header (for .cpp files)
+#include "ConnectionManager.hpp"
+
+// 2. Standard library
+#include <memory>
+#include <string>
+#include <vector>
+#include <optional>
+#include <functional>
+
+// 3. Qt framework
+#include <QObject>
+#include <QString>
+#include <QVector>
+#include <QSqlDatabase>
+
+// 4. Third-party libraries
+#include <pqxx/pqxx>
+#include <mysql.h>
+
+// 5. Project headers
+#include "core/DatabaseDriver.hpp"
+#include "ui/ConnectionDialog.hpp"
 ```
 
 ### Naming Conventions
-- **Types/Structs**: PascalCase (e.g., `DatabaseConnection`, `QueryTab`)
-- **Interfaces**: PascalCase, often with `-er` suffix (e.g., `DatabaseDriver`, `Formatter`)
-- **Functions/Methods**: PascalCase for exported, camelCase for private
-- **Variables**: camelCase, descriptive names
-- **Constants**: PascalCase or ALL_CAPS for compile-time constants
-- **Files**: snake_case lowercase (e.g., `connection_manager.go`)
+- **Classes/Structs**: PascalCase (e.g., `DatabaseConnection`, `QueryResult`)
+- **Interfaces**: PascalCase with `I` prefix OR pure abstract class (e.g., `IDatabaseDriver`, `DatabaseDriverInterface`)
+- **Functions/Methods**: camelCase (e.g., `executeQuery`, `connectToDatabase`)
+- **Variables**: camelCase, descriptive names (e.g., `connectionPool`, `activeSession`)
+- **Member variables**: `m_` prefix (e.g., `m_connection`, `m_queryCache`)
+- **Constants**: `kPascalCase` (e.g., `kDefaultTimeout`, `kMaxRetries`)
+- **Enums**: PascalCase, values with `k` prefix (e.g., `ConnectionState::kConnected`)
+- **Files**: PascalCase for classes (e.g., `ConnectionManager.hpp`, `ConnectionManager.cpp`)
+
+### Header Guard
+```cpp
+// Modern C++17: #pragma once (simpler, widely supported)
+#pragma once
+
+// Alternative: traditional include guard
+#ifndef TABLEPRO_CONNECTION_MANAGER_HPP
+#define TABLEPRO_CONNECTION_MANAGER_HPP
+#endif
+```
+
+### Smart Pointer Usage
+```cpp
+// Ownership: use std::unique_ptr by default
+std::unique_ptr<DatabaseDriver> m_driver;
+
+// Shared ownership: use std::shared_ptr (Qt objects use parent-child)
+std::shared_ptr<QueryCache> m_cache;
+
+// Raw pointers: for non-owning references (Qt QObject* uses parent-child)
+DatabaseConnection* m_activeConnection;
+
+// Factory function returning unique_ptr
+static std::unique_ptr<DatabaseDriver> create(DatabaseType type);
+
+// Qt objects: use parent-child memory management
+auto* button = new QPushButton(this);  // this takes ownership
+```
 
 ### Error Handling
-```go
-// Wrap errors with context
-if err != nil {
-    return fmt.Errorf("connection failed: %w", err)
+```cpp
+// Use exceptions for exceptional cases
+try {
+    m_driver->connect(config);
+} catch (const DatabaseException& e) {
+    emit connectionFailed(tr("Connection failed: %1").arg(e.what()));
+    return;
 }
 
-// Use context with timeout for all DB operations
-ctx, cancel := context.WithTimeout(parentCtx, time.Duration(timeout)*time.Second)
-defer cancel()
+// Use std::optional for values that may not exist
+std::optional<Connection> getConnection(const QString& name) const;
 
-// Never ignore errors
-_, err = driver.Execute(query)
-if err != nil {
-    log.Printf("Query execution failed: %v", err)
-    return err
-}
+// Use std::expected (C++23) or custom Result type for recoverable errors
+// For C++20, use std::pair<value, error> or custom Result<T>
+Result<QueryResult> executeQuery(const QString& sql);
+
+// Qt-style signal for async errors
+signals:
+    void errorOccurred(const QString& message, ErrorCode code);
 ```
 
 ### Error Handling Best Practices
 
-**1. Error Wrapping (Go)**
-- Always wrap errors with context using `fmt.Errorf("operation failed: %w", err)`
-- Use `%w` verb for wrapping to enable `errors.Is()` and `errors.As()`
-- Add meaningful context: what operation failed, not just the error
+**1. Exception Safety**
+- All database operations wrapped in try-catch
+- Use RAII for resource cleanup (automatic on exception)
+- Never throw across DLL/shared library boundaries
 
-**2. Context Timeouts**
-- All database operations MUST use context with timeout
-- Default timeout: 30 seconds for queries
-- Use `context.WithTimeout()` and always call `defer cancel()`
-- Handle `context.DeadlineExceeded` and `context.Canceled` appropriately
-
-**3. User-Friendly Error Messages**
-```go
+**2. User-Friendly Error Messages**
+```cpp
 // Bad: cryptic error
-return fmt.Errorf("dial tcp: connection refused")
+throw DatabaseException("PQconnectdb failed");
 
 // Good: actionable error
-return fmt.Errorf("database connection failed: host %s port %d - check if database is running", host, port)
+throw DatabaseException(
+    tr("Database connection failed: Host %1 port %2. "
+       "Verify the database server is running and accessible.")
+        .arg(config.host).arg(config.port)
+);
 ```
 
-**4. Frontend Error Display (TypeScript)**
-```typescript
-// Extract user-friendly message from wrapped errors
-function getUserMessage(error: Error): string {
-  if (error.message.includes('connection refused')) {
-    return 'Cannot connect to database. Check host and port.';
-  }
-  if (error.message.includes('timeout')) {
-    return 'Query timed out. Try a smaller dataset or increase timeout.';
-  }
-  return error.message;
+**3. Qt Error Display**
+```cpp
+// In UI layer - convert exceptions to user messages
+void ConnectionDialog::onConnectClicked() {
+    try {
+        m_manager->connect(m_config);
+    } catch (const ConnectionException& e) {
+        if (e.message().contains("connection refused")) {
+            showNotification(tr("Cannot connect. Check if database is running."));
+        } else if (e.message().contains("authentication")) {
+            showNotification(tr("Authentication failed. Check username/password."));
+        } else {
+            showNotification(e.message());
+        }
+        qWarning() << "Connection failed:" << e.what();
+    }
 }
-
-// Always log full error for debugging
-console.error('Query failed:', error);
-showToast(getUserMessage(error), 'error');
 ```
 
-**5. Error Recovery Patterns**
+**4. Error Recovery Patterns**
 - Retry transient errors (network timeouts) with exponential backoff
 - Fail fast on permanent errors (authentication, syntax errors)
 - Provide recovery actions in UI: "Retry", "Edit Query", "Close Connection"
 
-**6. Testing Error Paths**
-```go
-// Test error wrapping
-t.Run("error includes context", func(t *testing.T) {
-    err := executor.Execute(ctx, connID, failingDriver, query)
-    if err == nil {
-        t.Fatal("expected error, got nil")
-    }
-    if !strings.Contains(err.Error(), "query execution failed") {
-        t.Errorf("error missing context: %v", err)
-    }
-})
+**5. Testing Error Paths**
+```cpp
+TEST(ConnectionTest, handlesConnectionRefused) {
+    ConnectionManager manager;
+    ConnectionConfig config{"localhost", 9999, "test", "user", "pass"};
 
-// Test timeout handling
-t.Run("timeout cancels query", func(t *testing.T) {
-    ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-    defer cancel()
-    err := executor.Execute(ctx, connID, slowDriver, query)
-    if !errors.Is(err, context.DeadlineExceeded) {
-        t.Errorf("expected timeout error, got: %v", err)
-    }
-})
+    EXPECT_THROW({
+        manager.connect(config);
+    }, ConnectionException);
+}
+
+TEST(ConnectionTest, timeoutCancelsQuery) {
+    ConnectionManager manager;
+    manager.setTimeout(std::chrono::milliseconds(100));
+
+    EXPECT_THROW({
+        manager.executeQuery("SELECT pg_sleep(1)");
+    }, QueryTimeoutException);
+}
 ```
 
-### Struct Definition Style
-```go
-type DatabaseConnection struct {
-    ID       uuid.UUID        `json:"id"`
-    Name     string           `json:"name"`
-    Type     DatabaseType     `json:"type"`
-    Group    string           `json:"group"`
-    ColorTag string           `json:"colorTag"`
+### Class Definition Style
+```cpp
+#pragma once
 
-    // Core connection
-    Host     string `json:"host"`
-    Port     int    `json:"port"`
-    Database string `json:"database"`
-    Username string `json:"username"`
-    // Password NEVER in struct - stored in OS Keychain
-}
+#include <QObject>
+#include <QUuid>
+#include <QString>
+
+namespace tablepro {
+
+class DatabaseConnection {
+    Q_GADGET  // Enable Qt meta-object features without QObject overhead
+
+public:
+    // Constructors
+    DatabaseConnection() = default;
+    explicit DatabaseConnection(const QUuid& id, const QString& name);
+    ~DatabaseConnection() = default;
+
+    // Copy/move semantics
+    DatabaseConnection(const DatabaseConnection&) = default;
+    DatabaseConnection& operator=(const DatabaseConnection&) = default;
+    DatabaseConnection(DatabaseConnection&&) noexcept = default;
+    DatabaseConnection& operator=(DatabaseConnection&&) noexcept = default;
+
+    // Properties (Qt-style with getters/setters)
+    QUuid id() const { return m_id; }
+    void setId(const QUuid& id) { m_id = id; }
+
+    QString name() const { return m_name; }
+    void setName(const QString& name) { m_name = name; }
+
+    DatabaseType type() const { return m_type; }
+    void setType(DatabaseType type) { m_type = type; }
+
+    // Connection details
+    QString host() const { return m_host; }
+    void setHost(const QString& host) { m_host = host; }
+
+    int port() const { return m_port; }
+    void setPort(int port) { m_port = port; }
+
+    // Password is NEVER stored in struct - use QKeychain
+    QString username() const { return m_username; }
+    void setUsername(const QString& username) { m_username = username; }
+
+private:
+    QUuid m_id;
+    QString m_name;
+    DatabaseType m_type;
+    QString m_host;
+    int m_port{5432};  // Default PostgreSQL port
+    QString m_username;
+    // m_password intentionally excluded - use Keychain
+};
+
+} // namespace tablepro
 ```
 
 ### Concurrency Patterns
-```go
-// Use sync.RWMutex for shared state
-type ConnectionManager struct {
-    mu    sync.RWMutex
-    conns map[uuid.UUID]*Connection
-}
+```cpp
+// QtConcurrent for parallel algorithms
+auto future = QtConcurrent::map(results, [](auto& row) {
+    processRow(row);
+});
 
-// Goroutine with context
-go func() {
-    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-    defer cancel()
-    // ... work
-}()
+// QThread for worker objects
+class Worker : public QObject {
+    Q_OBJECT
+public slots:
+    void process() {
+        // Long-running task
+        emit resultReady(value);
+    }
+signals:
+    void resultReady(const QString& value);
+};
+
+// Usage
+auto* worker = new Worker;
+auto* thread = new QThread;
+worker->moveToThread(thread);
+connect(thread, &QThread::started, worker, &Worker::process);
+connect(worker, &Worker::resultReady, [=](const QString& v) {
+    thread->quit();
+    thread->wait();
+});
+thread->start();
+
+// Modern C++20: std::jthread (joining thread)
+std::jthread worker([](std::stop_token st) {
+    while (!st.stop_requested()) {
+        // Work with periodic stop checks
+    }
+});
+
+// Qt + C++20: QPromise + QFuture
+QFuture<QueryResult> future = QtConcurrent::run([=]() {
+    return executeLongQuery(sql);
+});
 ```
 
-### JSON Tags
-- Always use `json` tags on exported struct fields
-- Use camelCase for JSON field names
-- Use `-` tag to exclude sensitive fields (passwords, API keys)
+### Qt Signal/Slot Pattern
+```cpp
+class QueryExecutor : public QObject {
+    Q_OBJECT
+
+public:
+    explicit QueryExecutor(QObject* parent = nullptr);
+
+public slots:
+    // Called from UI to execute query
+    void executeQuery(const QString& sql);
+
+    // Called to cancel running query
+    void cancelQuery();
+
+signals:
+    // Emitted when query starts
+    void executionStarted();
+
+    // Emitted when query completes
+    void executionFinished(const QueryResult& result);
+
+    // Emitted on error
+    void executionError(const QString& message, ErrorCode code);
+
+    // Emitted for progress updates
+    void progressUpdated(int percent);
+
+private:
+    QSqlDatabase m_database;
+    std::atomic<bool> m_running{false};
+};
+```
+
+### String Handling
+```cpp
+// Qt QString for UI text (UTF-16 internally)
+QString name = tr("Database Connection");  // tr() for translation
+
+// std::string for internal processing (UTF-8)
+std::string utf8Sql = sql.toUtf8().toStdString();
+
+// QStringLiteral for compile-time QString (efficient)
+constexpr auto kDefaultHost = QStringLiteral("localhost");
+
+// Raw string literals for SQL (avoid escaping)
+const QString query = R"(
+    SELECT id, name, created_at
+    FROM users
+    WHERE status = 'active'
+    ORDER BY created_at DESC
+)";
+
+// String concatenation
+QString full = name + QStringLiteral(":") + QString::number(port);
+
+// String formatting (Qt 6.6+)
+QString formatted = tr("Connected to %1:%2").arg(host).arg(port);
+```
 
 ### Logging
-```go
-// Use structured logging (log/slog or zap)
-log.Printf("Connection established: host=%s, port=%d", host, port)
+```cpp
+// Qt logging categories
+Q_LOGGING_CATEGORY(dbCategory, "tablepro.database")
+Q_LOGGING_CATEGORY(uiCategory, "tablepro.ui")
 
-// For Wails events (debugging)
-runtime.EventsEmit(ctx, "debug:info", map[string]any{
-    "message": "Query executed",
-    "duration": executionTime,
-})
-```
+// Usage
+qCDebug(dbCategory) << "Executing query:" << sql;
+qCInfo(dbCategory) << "Query completed in" << elapsedMs << "ms";
+qCWarning(dbCategory) << "Connection pool exhausted, waiting...";
+qCCritical(dbCategory) << "Database connection lost:" << error;
 
-## TypeScript/React Conventions
-
-### Import Organization
-```typescript
-// React and libraries
-import React, { useState, useEffect } from 'react'
-
-// Wails bindings
-import { ConnectionManager } from '../wailsjs/go/main'
-
-// Local components
-import { DataGrid } from './DataGrid'
-import { Toolbar } from './Toolbar'
-
-// Types and utilities
-import type { DatabaseConnection } from '../types'
-import { formatDate } from '../utils/format'
-```
-
-### State Management (Zustand)
-```typescript
-import { create } from 'zustand'
-
-interface ConnectionStore {
-  connections: DatabaseConnection[]
-  activeConnection: uuid.UUID | null
-  addConnection: (conn: DatabaseConnection) => void
-  setActiveConnection: (id: uuid.UUID) => void
+// Install custom message handler for file logging
+void customMessageHandler(QtMsgType type, const QMessageLogContext& context, const QString& msg) {
+    // Write to log file with timestamp, category, etc.
 }
-
-export const useConnectionStore = create<ConnectionStore>((set) => ({
-  connections: [],
-  activeConnection: null,
-  addConnection: (conn) => set((state) => ({
-    connections: [...state.connections, conn]
-  })),
-  setActiveConnection: (id) => set({ activeConnection: id })
-}))
 ```
 
-### Wails RPC Calls
-```typescript
-// Go methods are async in TypeScript
-async function saveConnection(conn: DatabaseConnection) {
-  try {
-    const result = await ConnectionManager.Save(conn)
-    return result
-  } catch (err) {
-    console.error('Failed to save connection:', err)
-    throw err
-  }
-}
+## Qt/Coding Patterns
 
-// Wails Events (pub/sub)
-import { EventsOn, EventsOff } from '../wailsjs/runtime'
+### QObject Parent-Child Memory Management
+```cpp
+// Parent takes ownership of children - automatic cleanup
+auto* mainWindow = new QMainWindow;
+auto* centralWidget = new QWidget(mainWindow);      // mainWindow owns
+auto* layout = new QVBoxLayout(centralWidget);      // centralWidget owns
+auto* button = new QPushButton(tr("Click"), layout); // layout owns
 
-useEffect(() => {
-  EventsOn('connection:status', (status: ConnectionStatus) => {
-    setStatus(status)
-  })
-  return () => EventsOff('connection:status')
-}, [])
+// When mainWindow is deleted, all children are automatically deleted
+
+// For non-QObject objects, use smart pointers
+std::unique_ptr<DatabaseDriver> m_driver;
+std::vector<std::unique_ptr<Connection>> m_connections;
 ```
 
-### Component Patterns
-- Use functional components with hooks
-- TypeScript interfaces for props
-- Tailwind CSS for styling
-- Lucide React for icons
+### Qt Properties System
+```cpp
+class ConnectionSettings : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QString host READ host WRITE setHost NOTIFY hostChanged)
+    Q_PROPERTY(int port READ port WRITE setPort NOTIFY portChanged)
+    Q_PROPERTY(bool sslEnabled READ sslEnabled WRITE setSslEnabled NOTIFY sslChanged)
+
+public:
+    QString host() const { return m_host; }
+    void setHost(const QString& host) {
+        if (m_host != host) {
+            m_host = host;
+            emit hostChanged(host);
+        }
+    }
+
+signals:
+    void hostChanged(const QString& newHost);
+    void portChanged(int newPort);
+    void sslChanged(bool enabled);
+
+private:
+    QString m_host;
+    int m_port{5432};
+    bool m_sslEnabled{false};
+};
+```
+
+### Model/View for Data Grid
+```cpp
+// Custom model for query results
+class QueryResultModel : public QAbstractTableModel {
+    Q_OBJECT
+
+public:
+    explicit QueryResultModel(QObject* parent = nullptr);
+
+    // Required overrides
+    int rowCount(const QModelIndex& parent = QModelIndex()) const override;
+    int columnCount(const QModelIndex& parent = QModelIndex()) const override;
+    QVariant data(const QModelIndex& index, int role) const override;
+    QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
+
+    // For editing support
+    Qt::ItemFlags flags(const QModelIndex& index) const override;
+    bool setData(const QModelIndex& index, const QVariant& value, int role) override;
+
+    // For large datasets (pagination/virtual loading)
+    bool canFetchMore(const QModelIndex& parent) const override;
+    void fetchMore(const QModelIndex& parent) override;
+
+public slots:
+    void setQueryResult(const QueryResult& result);
+
+private:
+    QueryResult m_result;
+    int m_fetchedRows{0};
+};
+
+// Usage with QTableView
+auto* tableView = new QTableView;
+auto* model = new QueryResultModel(tableView);
+tableView->setModel(model);
+tableView->setItemDelegate(new SqlItemDelegate(tableView));
+```
+
+### QScintilla for SQL Editor
+```cpp
+#include <Qsci/qsciscintilla.h>
+#include <Qsci/qscilexersql.h>
+
+class SqlEditor : public QsciScintilla {
+    Q_OBJECT
+
+public:
+    explicit SqlEditor(QWidget* parent = nullptr);
+
+    void setupSyntaxHighlighting();
+    void setupAutoCompletion();
+    void setupBraceMatching();
+
+public slots:
+    void executeCurrentStatement();
+    void executeAllStatements();
+    void formatSql();
+
+signals:
+    void executeRequested(const QString& sql);
+    void executeAllRequested(const QStringList& statements);
+
+private:
+    QsciLexerSQL* m_lexer;
+    QsciAPIs* m_apis;
+};
+```
 
 ## Architecture Patterns
 
 ### Module Organization
 ```
-cmd/
-  main.go              # Wails entry point
-internal/
-  driver/              # Database driver interface + implementations
-  connection/          # Connection CRUD, Keychain, URL parser
-  session/             # Active connection sessions
-  query/               # Query builder, pagination, dialects
-  change/              # Change tracking, SQL generation
-  export/              # Export/Import services
-  history/             # Query history (SQLite FTS5)
-  settings/            # App preferences
-  tab/                 # Tab persistence
-  ssh/                 # SSH tunnel management
-  license/             # License validation
-frontend/
-  src/
-    components/        # React UI components
-    stores/            # Zustand stores
-    hooks/             # Custom React hooks
-    lib/               # Utilities
+tablepro/
+├── CMakeLists.txt              # Root CMake configuration
+├── vcpkg.json                  # vcpkg dependencies
+├── README.md                   # Project overview
+├── docs/                       # Documentation
+│   ├── architecture.md
+│   ├── drivers/
+│   └── build/
+├── src/
+│   ├── core/                   # Business logic (no Qt GUI dependencies)
+│   │   ├── DatabaseDriver.hpp
+│   │   ├── PostgresDriver.cpp
+│   │   ├── MysqlDriver.cpp
+│   │   ├── ConnectionManager.cpp
+│   │   ├── QueryExecutor.cpp
+│   │   ├── ChangeTracker.cpp
+│   │   └── SqlGenerator.cpp
+│   ├── ui/                     # Qt UI components
+│   │   ├── MainWindow.cpp
+│   │   ├── ConnectionDialog.cpp
+│   │   ├── DataGrid/
+│   │   │   ├── QueryResultView.cpp
+│   │   │   └── QueryResultModel.cpp
+│   │   ├── Editor/
+│   │   │   ├── SqlEditor.cpp
+│   │   │   └── SqlHighlighter.cpp
+│   │   └── Widgets/
+│   ├── services/               # Application services
+│   │   ├── ExportService.cpp
+│   │   ├── ImportService.cpp
+│   │   └── HistoryService.cpp
+│   └── main.cpp                # Application entry point
+├── resources/
+│   ├── icons/
+│   ├── styles/
+│   └── translations/
+└── tests/
+    ├── unit/
+    ├── integration/
+    └── ui/
 ```
 
 ### Key Design Decisions
-- **No REST API**: Wails provides native IPC over WebView
-- **Password Security**: OS Keychain via `go-keyring`
-- **Query History**: Embedded SQLite with FTS5
+- **No WebView**: Native Qt Widgets for all UI
+- **Password Security**: QKeychain for secure storage
+- **Query History**: SQLite with FTS5 via Qt SQL
 - **Tab State**: JSON files per connection UUID
-- **Large Datasets**: AG Grid with server-side row model
+- **Large Datasets**: QTableView with custom model, fetch-on-scroll
+- **Memory Management**: Qt parent-child + RAII (smart pointers)
+- **Threading**: QtConcurrent + QThread for background work
 
 ## Testing Guidelines
 
-### Go Tests
-```go
-func TestConnectionManager_Save(t *testing.T) {
-    // Arrange
-    manager := NewConnectionManager()
-    conn := &DatabaseConnection{
-        Name: "Test DB",
-        Type: "postgres",
-    }
+### Unit Tests with Qt Test
+```cpp
+#include <QtTest/QtTest>
 
-    // Act
-    err := manager.Save(conn)
+class TestConnectionManager : public QObject {
+    Q_OBJECT
 
-    // Assert
-    if err != nil {
-        t.Fatalf("Expected no error, got: %v", err)
-    }
+private slots:
+    void testSaveConnection_data();
+    void testSaveConnection();
+
+    void testInvalidHost();
+    void testConnectionTimeout();
+
+private:
+    ConnectionManager* m_manager;
+};
+
+void TestConnectionManager::testSaveConnection_data() {
+    QTest::addColumn<QString>("name");
+    QTest::addColumn<QString>("host");
+    QTest::addColumn<int>("port");
+
+    QTest::newRow("postgres local") << "Local PG" << "localhost" << 5432;
+    QTest::newRow("mysql remote") << "Remote MySQL" << "192.168.1.100" << 3306;
 }
 
-// Table-driven tests for drivers
-func TestDriver_Query(t *testing.T) {
-    tests := []struct {
-        name    string
-        query   string
-        wantErr bool
-    }{
-        {"valid SELECT", "SELECT 1", false},
-        {"invalid syntax", "SELEC 1", true},
-    }
+void TestConnectionManager::testSaveConnection() {
+    QFETCH(QString, name);
+    QFETCH(QString, host);
+    QFETCH(int, port);
 
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            // ...
-        })
-    }
+    ConnectionConfig config{name, host, port, "test", "user"};
+    bool result = m_manager->save(config);
+
+    QVERIFY(result);
+    QCOMPARE(m_manager->connectionNames().contains(name), true);
+}
+
+QTEST_MAIN(TestConnectionManager)
+#include "test_connectionmanager.moc"
+```
+
+### Test with Google Test (Alternative)
+```cpp
+#include <gtest/gtest.h>
+
+TEST(DatabaseDriverTest, ConnectsSuccessfully) {
+    auto driver = DatabaseDriverFactory::create(DatabaseType::PostgreSQL);
+
+    ConnectionConfig config;
+    config.host = "localhost";
+    config.port = 5432;
+
+    EXPECT_NO_THROW(driver->connect(config));
+    EXPECT_TRUE(driver->isConnected());
+}
+
+TEST(DatabaseDriverTest, HandlesConnectionRefused) {
+    auto driver = DatabaseDriverFactory::create(DatabaseType::PostgreSQL);
+
+    ConnectionConfig config;
+    config.host = "localhost";
+    config.port = 9999;  // Invalid port
+
+    EXPECT_THROW(driver->connect(config), ConnectionException);
 }
 ```
 
-### Frontend Tests
-```typescript
-import { render, screen, fireEvent } from '@testing-library/react'
+### UI Tests with Qt Test
+```cpp
+void TestConnectionDialog::testFormValidation() {
+    ConnectionDialog dialog;
 
-test('saves connection on form submit', async () => {
-  render(<ConnectionForm />)
-  
-  fireEvent.change(screen.getByLabelText('Name'), {
-    target: { value: 'Test DB' }
-  })
-  
-  fireEvent.click(screen.getByText('Save'))
-  
-  expect(await screen.findByText('Connection saved')).toBeInTheDocument()
-})
+    // Empty name should be invalid
+    dialog.setNameField("");
+    dialog.setHostField("localhost");
+    QVERIFY(!dialog.isFormValid());
+
+    // Valid input should be valid
+    dialog.setNameField("Test DB");
+    dialog.setHostField("localhost");
+    QVERIFY(dialog.isFormValid());
+}
+
+void TestConnectionDialog::testSaveButtonClick() {
+    ConnectionDialog dialog;
+
+    QTest::mouseClick(dialog.saveButton(), Qt::LeftButton);
+
+    // Verify save was called
+    QCOMPARE(m_mockManager->saveCalled, true);
+}
 ```
 
 ## Git & Workflow
 
 ### Branch Naming
 - `feature/connection-manager`
-- `bugfix/query-pagination`
+- `bugfix/query-pagination-crash`
 - `refactor/driver-interface`
-- `docs/api-reference`
+- `docs/architecture-update`
+- `test/add-driver-tests`
 
 ### Commit Messages
 ```
 feat: add PostgreSQL driver with SSH tunnel support
-- Implement pgx-based driver
-- Add SSH tunnel via golang.org/x/crypto/ssh
-- Store passwords in OS Keychain
+
+- Implement libpq-based driver wrapper
+- Add SSH tunnel via libssh2 + QtNetwork
+- Store passwords in QKeychain
+- Add unit tests for connection flow
+
+Closes #42
 ```
 
 ### Pre-commit Checklist
-- [ ] `go fmt ./...` applied
-- [ ] `go vet ./...` passes
-- [ ] `go test ./...` passes
-- [ ] TypeScript compiles without errors
-- [ ] ESLint passes
+- [ ] `clang-format` applied
+- [ ] `cmake --build` succeeds
+- [ ] `ctest` passes
+- [ ] No compiler warnings (`-Wall -Wextra -Wpedantic`)
+- [ ] Qt slots/signals properly connected
+- [ ] Memory management verified (no leaks)
 
 ## AI Agent Guidelines
 
 1. **Read specs first**: Always check `/specs/` before implementing
-2. **Match patterns**: Follow existing code style exactly
-3. **No type suppression**: Never use `as any` or `@ts-ignore`
-4. **Context everywhere**: All DB operations need context with timeout
-5. **No password in structs**: Always use OS Keychain
-6. **Error wrapping**: Always wrap errors with context
-7. **Test before complete**: Run `go test` on changed packages
+2. **Match patterns**: Follow existing C++/Qt style exactly
+3. **No raw pointers**: Use smart pointers or Qt parent-child
+4. **RAII always**: Resource acquisition is initialization
+5. **No password in structs**: Always use QKeychain
+6. **Exception handling**: Wrap all database operations
+7. **Test before complete**: Run `ctest` on changed components
+8. **Qt meta-object**: Remember `Q_OBJECT` macro in classes with signals/slots
+9. **Thread safety**: Use `QMutex` or C++20 `std::atomic` for shared state
+10. **String types**: QString for UI, std::string for internal
 
-## Cursor/Copilot Rules
+## CMake/vcpkg Configuration
 
-No Cursor rules (`.cursor/rules/` or `.cursorrules`) or GitHub Copilot instructions (`.github/copilot-instructions.md`) exist in this repository yet.
+### Root CMakeLists.txt
+```cmake
+cmake_minimum_required(VERSION 3.24)
+project(TablePro VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+find_package(Qt6 6.6 REQUIRED COMPONENTS
+    Core Gui Widgets Sql Network Concurrent
+)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBPQ REQUIRED libpq)
+
+add_executable(tablepro
+    src/main.cpp
+    src/core/DatabaseDriver.cpp
+    src/ui/MainWindow.cpp
+    # ... more sources
+)
+
+target_link_libraries(tablepro PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Sql
+    Qt6::Network
+    Qt6::Concurrent
+    ${LIBPQ_LIBRARIES}
+)
+
+target_include_directories(tablepro PRIVATE
+    ${LIBPQ_INCLUDE_DIRS}
+)
+```
+
+### vcpkg.json
+```json
+{
+  "name": "tablepro",
+  "version": "1.0.0",
+  "dependencies": [
+    "qt6-base",
+    "qt6-svg",
+    "qt6-tools",
+    "libpq",
+    "libmysql",
+    "sqlite3",
+    "duckdb",
+    "hiredis",
+    "libssh2",
+    "openssl",
+    "qkeychain"
+  ],
+  "features": {
+    "testing": {
+      "description": "Enable testing with Qt Test and Google Test",
+      "dependencies": ["gtest", "qttest"]
+    }
+  }
+}
+```
 
 ## Key Dependencies
 
-### Go
-- `github.com/wailsapp/wails/v2` - Desktop framework
-- `github.com/jackc/pgx/v5` - PostgreSQL
-- `github.com/go-sql-driver/mysql` - MySQL
-- `github.com/mattn/go-sqlite3` - SQLite
-- `golang.org/x/crypto/ssh` - SSH tunneling
-- `github.com/zalando/go-keyring` - OS Keychain
+### C++ Libraries (via vcpkg)
+| Library | Purpose |
+|---------|---------|
+| `qt6-base` | Core Qt framework (Core, Gui, Widgets) |
+| `qt6-sql` | Database abstraction layer |
+| `qt6-network` | Network access, SSL/TLS |
+| `qt6-concurrent` | Thread pool, parallel algorithms |
+| `libpq` | PostgreSQL C client library |
+| `libmysql` | MySQL C client library |
+| `sqlite3` | SQLite embedded database |
+| `duckdb` | DuckDB analytical database |
+| `hiredis` | Redis C client library |
+| `libssh2` | SSH2 protocol for tunneling |
+| `openssl` | SSL/TLS cryptography |
+| `qkeychain` | Cross-platform secure storage |
 
-### React
-- `@ag-grid-community/react` - Data grid
-- `@monaco-editor/react` - SQL editor
-- `zustand` - State management
-- `@radix-ui/react-*` - UI primitives
-- `tailwindcss` - Styling
+### Qt Modules
+| Module | Purpose |
+|--------|---------|
+| Qt Core | Foundation, containers, threading |
+| Qt Gui | Rendering, fonts, images |
+| Qt Widgets | Classic desktop UI components |
+| Qt Sql | Database driver abstraction |
+| Qt Network | HTTP, TCP, SSL |
+| Qt Concurrent | Parallel processing |
+| Qt Test | Unit testing framework |
+
+## Platform-Specific Notes
+
+### macOS
+- Use `macdeployqt` for deployment
+- Keychain integration via QKeychain
+- Native title bar with `QMainWindow::setWindowFlags()`
+
+### Windows
+- Use `windeployqt` for deployment
+- Credential Manager via QKeychain
+- Native file dialogs automatically used
+
+### Linux
+- Deploy as AppImage, Flatpak, or native packages
+- libsecret via QKeychain
+- Test on Ubuntu 22.04+, Fedora 38+
