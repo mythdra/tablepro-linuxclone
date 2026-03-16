@@ -1,4 +1,6 @@
+pub mod db;
 pub mod error;
+
 pub use error::AppError;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
