@@ -4,14 +4,32 @@ use sqlx::postgres::PgPool;
 
 #[tauri::command]
 pub async fn connect(
-    config: ConnectionConfig,
+    connection_id: String,
+    _db_type: String,
+    host: String,
+    port: u16,
+    database: String,
+    username: String,
+    password: String,
     pool: State<'_, ConnectionPool>,
 ) -> Result<ConnectionInfo, String> {
+    let config = ConnectionConfig {
+        id: connection_id.clone(),
+        name: format!("{}@{}", username, database),
+        host,
+        port,
+        database,
+        username,
+        password: Some(password),
+        ssl_mode: crate::db::SslMode::Disable,
+        ssh_config: None,
+    };
+
     pool.connect(&config)
         .await
         .map_err(|e| e.to_string())?;
 
-    let pg_pool: PgPool = pool.get(&config.id)
+    let pg_pool: PgPool = pool.get(&connection_id)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -21,7 +39,7 @@ pub async fn connect(
         .map_err(|e| e.to_string())?;
 
     Ok(ConnectionInfo {
-        id: config.id,
+        id: connection_id,
         name: config.name,
         database: config.database,
         server_version: version,
@@ -40,13 +58,21 @@ pub async fn disconnect(
 }
 
 #[tauri::command]
-pub async fn test_connection(config: ConnectionConfig) -> Result<bool, String> {
+pub async fn test_connection(
+    _connection_id: String,
+    _db_type: String,
+    host: String,
+    port: u16,
+    database: String,
+    username: String,
+    password: String,
+) -> Result<bool, String> {
     let options = sqlx::postgres::PgConnectOptions::new()
-        .host(&config.host)
-        .port(config.port)
-        .database(&config.database)
-        .username(&config.username)
-        .password(config.password.as_deref().unwrap_or(""));
+        .host(&host)
+        .port(port)
+        .database(&database)
+        .username(&username)
+        .password(&password);
 
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(1)

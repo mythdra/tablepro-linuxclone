@@ -1,5 +1,0 @@
-test_database_driver 11 0.00243054
-test_connection_manager 11 0.00113541
-test_postgres_driver 10 0.00531588
-test_postgres_integration 8 0.0293855
----

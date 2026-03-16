@@ -16,8 +16,16 @@ export const tauriApi = {
   disconnect: (connectionId: string): Promise<void> =>
     invoke('disconnect', { connectionId }),
 
-  testConnection: (config: ConnectionConfig): Promise<boolean> =>
-    invoke('test_connection', { config }),
+  testConnection: (
+    connectionId: string,
+    dbType: string,
+    host: string,
+    port: number,
+    database: string,
+    username: string,
+    password: string
+  ): Promise<boolean> =>
+    invoke('test_connection', { connectionId, dbType, host, port, database, username, password }),
 
   executeQuery: (
     connectionId: string,

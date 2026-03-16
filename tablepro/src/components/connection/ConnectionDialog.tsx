@@ -45,19 +45,11 @@ export function ConnectionDialog({ open, onClose }: ConnectionDialogProps) {
     setIsConnecting(true);
 
     try {
-      const config = {
-        id: crypto.randomUUID(),
-        name: formData.name || `${formData.type}://${formData.host}`,
-        host: formData.host,
-        port: parseInt(formData.port, 10),
-        database: formData.database,
-        username: formData.username,
-        sslMode: 'disable' as const,
-      };
+      const connectionId = crypto.randomUUID();
 
-      // Test connection
+      // Connect directly with individual parameters
       const info = await tauriApi.connect(
-        config.id,
+        connectionId,
         formData.type,
         formData.host,
         parseInt(formData.port, 10),
@@ -66,9 +58,19 @@ export function ConnectionDialog({ open, onClose }: ConnectionDialogProps) {
         formData.password
       );
 
+      const config = {
+        id: connectionId,
+        name: formData.name || `${formData.type}://${formData.host}`,
+        host: formData.host,
+        port: parseInt(formData.port, 10),
+        database: formData.database,
+        username: formData.username,
+        sslMode: 'disable' as const,
+      };
+
       addConnection(config);
-      setActiveConnection(config.id);
-      setConnectionInfo(config.id, info);
+      setActiveConnection(connectionId);
+      setConnectionInfo(connectionId, info);
 
       // Reset form
       setFormData({

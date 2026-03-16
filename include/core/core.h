@@ -1,1 +1,0 @@
-// Placeholder header for core functionality
