@@ -1,9 +1,11 @@
+use serde::Serialize;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Serialize)]
+#[serde(tag = "code", content = "message")]
 pub enum AppError {
     #[error("Database error: {0}")]
-    Database(#[from] sqlx::Error),
+    Database(String),
 
     #[error("Connection not found: {0}")]
     NotConnected(String),
@@ -13,13 +15,4 @@ pub enum AppError {
 
     #[error("Query execution failed: {0}")]
     QueryFailed(String),
-}
-
-impl serde::Serialize for AppError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
 }
