@@ -2,20 +2,40 @@ import { useMutation } from '@tanstack/react-query';
 import { tauriApi } from '@/lib/tauri';
 import { useAppStore } from '@/stores/appStore';
 
+interface ConnectVariables {
+  connectionId: string;
+  dbType: string;
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+}
+
 export function useConnection() {
   const { setConnectionInfo, setActiveConnection } = useAppStore();
 
   const connectMutation = useMutation({
-    mutationFn: tauriApi.connect,
+    mutationFn: async (vars: ConnectVariables) => {
+      return tauriApi.connect(
+        vars.connectionId,
+        vars.dbType,
+        vars.host,
+        vars.port,
+        vars.database,
+        vars.username,
+        vars.password
+      );
+    },
     onSuccess: (info, variables) => {
-      setConnectionInfo(variables.id, info);
-      setActiveConnection(variables.id);
+      setConnectionInfo(variables.connectionId, info);
+      setActiveConnection(variables.connectionId);
     },
   });
 
   const disconnectMutation = useMutation({
     mutationFn: (connectionId: string) => tauriApi.disconnect(connectionId),
-    onSuccess: (_, connectionId) => {
+    onSuccess: () => {
       setActiveConnection(null);
     },
   });
