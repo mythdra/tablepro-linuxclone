@@ -1,0 +1,22 @@
+{
+  "name": "tablepro",
+  "version-string": "1.0.0",
+  "description": "Cross-platform database client for PostgreSQL and other databases",
+  "homepage": "https://github.com/your-repo/tablepro",
+  "supports": "!(uwp | arm32)",
+  "dependencies": [
+    "qtbase",
+    "qtsvg",
+    "qttools",
+    "qttranslations",
+    "libpq",
+    "libmysql",
+    "sqlite3",
+    "duckdb",
+    "hiredis",
+    "libssh2",
+    "openssl",
+    "qkeychain"
+  ],
+  "builtin-baseline": "4b77da7fed37817f124936239197833469f1b9a8"
+}

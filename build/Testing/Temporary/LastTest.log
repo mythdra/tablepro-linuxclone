@@ -1,0 +1,134 @@
+Start testing: Mar 16 05:40 +07
+----------------------------------------------------------
+1/4 Testing: test_database_driver
+1/4 Test: test_database_driver
+Command: "/Users/can/code/tablepro-fork/build/bin/test_database_driver"
+Directory: /Users/can/code/tablepro-fork/build/tests/unit
+"test_database_driver" start time: Mar 16 05:40 +07
+Output:
+----------------------------------------------------------
+********* Start testing of TestDatabaseDriver *********
+Config: Using QtTest library 6.10.2, Qt 6.10.2 (arm64-little_endian-lp64 shared (dynamic) release build; by Apple LLVM 17.0.0 (clang-1700.6.3.2)), macos 15.7.4
+PASS   : TestDatabaseDriver::initTestCase()
+PASS   : TestDatabaseDriver::testExceptionCreation()
+PASS   : TestDatabaseDriver::testConnectionConfig()
+PASS   : TestDatabaseDriver::testQueryResult()
+PASS   : TestDatabaseDriver::cleanupTestCase()
+Totals: 5 passed, 0 failed, 0 skipped, 0 blacklisted, 1ms
+********* Finished testing of TestDatabaseDriver *********
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"test_database_driver" end time: Mar 16 05:40 +07
+"test_database_driver" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/4 Testing: test_connection_manager
+2/4 Test: test_connection_manager
+Command: "/Users/can/code/tablepro-fork/build/bin/test_connection_manager"
+Directory: /Users/can/code/tablepro-fork/build/tests/unit
+"test_connection_manager" start time: Mar 16 05:40 +07
+Output:
+----------------------------------------------------------
+********* Start testing of TestConnectionManager *********
+Config: Using QtTest library 6.10.2, Qt 6.10.2 (arm64-little_endian-lp64 shared (dynamic) release build; by Apple LLVM 17.0.0 (clang-1700.6.3.2)), macos 15.7.4
+PASS   : TestConnectionManager::initTestCase()
+PASS   : TestConnectionManager::testGetInstance()
+PASS   : TestConnectionManager::testConnectionManagement()
+PASS   : TestConnectionManager::cleanupTestCase()
+Totals: 4 passed, 0 failed, 0 skipped, 0 blacklisted, 1ms
+********* Finished testing of TestConnectionManager *********
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_connection_manager" end time: Mar 16 05:40 +07
+"test_connection_manager" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/4 Testing: test_postgres_driver
+3/4 Test: test_postgres_driver
+Command: "/Users/can/code/tablepro-fork/build/bin/test_postgres_driver"
+Directory: /Users/can/code/tablepro-fork/build/tests/unit
+"test_postgres_driver" start time: Mar 16 05:40 +07
+Output:
+----------------------------------------------------------
+********* Start testing of TestPostgresDriver *********
+Config: Using QtTest library 6.10.2, Qt 6.10.2 (arm64-little_endian-lp64 shared (dynamic) release build; by Apple LLVM 17.0.0 (clang-1700.6.3.2)), macos 15.7.4
+PASS   : TestPostgresDriver::initTestCase()
+PASS   : TestPostgresDriver::testDriverCreation()
+PASS   : TestPostgresDriver::testDriverType()
+PASS   : TestPostgresDriver::testInitialConnectionState()
+PASS   : TestPostgresDriver::testConnectWithInvalidConfig()
+PASS   : TestPostgresDriver::testDisconnectWhenNotConnected()
+PASS   : TestPostgresDriver::testConnectionStringConstruction()
+PASS   : TestPostgresDriver::testConnectionStringFormat()
+PASS   : TestPostgresDriver::testExecuteQueryWithoutConnection()
+PASS   : TestPostgresDriver::testTypeMapping()
+PASS   : TestPostgresDriver::testTypeMappingUnknownType()
+PASS   : TestPostgresDriver::testJsonConversion()
+PASS   : TestPostgresDriver::testUuidHandling()
+PASS   : TestPostgresDriver::testByteArrayHandling()
+PASS   : TestPostgresDriver::testTransactionWithoutConnection()
+PASS   : TestPostgresDriver::testLastErrorInitiallyEmpty()
+PASS   : TestPostgresDriver::cleanupTestCase()
+Totals: 17 passed, 0 failed, 0 skipped, 0 blacklisted, 34ms
+********* Finished testing of TestPostgresDriver *********
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"test_postgres_driver" end time: Mar 16 05:40 +07
+"test_postgres_driver" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/4 Testing: test_postgres_integration
+4/4 Test: test_postgres_integration
+Command: "/Users/can/code/tablepro-fork/build/bin/test_postgres_integration"
+Directory: /Users/can/code/tablepro-fork/build/tests/integration
+"test_postgres_integration" start time: Mar 16 05:40 +07
+Output:
+----------------------------------------------------------
+********* Start testing of TestPostgresDriverIntegration *********
+Config: Using QtTest library 6.10.2, Qt 6.10.2 (arm64-little_endian-lp64 shared (dynamic) release build; by Apple LLVM 17.0.0 (clang-1700.6.3.2)), macos 15.7.4
+PASS   : TestPostgresDriverIntegration::initTestCase()
+NOTICE:  table "test_table" does not exist, skipping
+PASS   : TestPostgresDriverIntegration::testConnect()
+NOTICE:  table "test_table" does not exist, skipping
+PASS   : TestPostgresDriverIntegration::testConnectWithWrongCredentials()
+NOTICE:  table "test_table" does not exist, skipping
+PASS   : TestPostgresDriverIntegration::testDisconnect()
+NOTICE:  table "test_table" does not exist, skipping
+PASS   : TestPostgresDriverIntegration::testExecuteSelectQuery()
+PASS   : TestPostgresDriverIntegration::testExecuteInsertQuery()
+PASS   : TestPostgresDriverIntegration::testExecuteUpdateQuery()
+PASS   : TestPostgresDriverIntegration::testExecuteDeleteQuery()
+PASS   : TestPostgresDriverIntegration::testExecuteQueryWithParams()
+PASS   : TestPostgresDriverIntegration::testTransactionCommit()
+PASS   : TestPostgresDriverIntegration::testTransactionRollback()
+PASS   : TestPostgresDriverIntegration::testSavepoint()
+PASS   : TestPostgresDriverIntegration::testJsonType()
+PASS   : TestPostgresDriverIntegration::testUuidType()
+NOTICE:  table "bytea_test" does not exist, skipping
+NOTICE:  table "test_table" does not exist, skipping
+PASS   : TestPostgresDriverIntegration::testByteArrayType()
+NOTICE:  table "test_table" does not exist, skipping
+PASS   : TestPostgresDriverIntegration::testGetDatabases()
+PASS   : TestPostgresDriverIntegration::testGetTables()
+PASS   : TestPostgresDriverIntegration::testGetColumns()
+QDEBUG : TestPostgresDriverIntegration::testGetServerVersion() Server version: "PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit"
+NOTICE:  table "test_table" does not exist, skipping
+PASS   : TestPostgresDriverIntegration::testGetServerVersion()
+PASS   : TestPostgresDriverIntegration::cleanupTestCase()
+Totals: 20 passed, 0 failed, 0 skipped, 0 blacklisted, 219ms
+********* Finished testing of TestPostgresDriverIntegration *********
+<end of output>
+Test time =   0.24 sec
+----------------------------------------------------------
+Test Passed.
+"test_postgres_integration" end time: Mar 16 05:40 +07
+"test_postgres_integration" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Mar 16 05:40 +07

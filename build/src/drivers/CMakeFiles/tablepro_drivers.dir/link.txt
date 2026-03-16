@@ -1,0 +1,2 @@
+/usr/bin/ar qc ../../lib/libtablepro_drivers.a CMakeFiles/tablepro_drivers.dir/tablepro_drivers_autogen/mocs_compilation.cpp.o CMakeFiles/tablepro_drivers.dir/drivers.cpp.o
+/usr/bin/ranlib ../../lib/libtablepro_drivers.a

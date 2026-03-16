@@ -1,0 +1,2 @@
+/usr/bin/ar qc ../../lib/libtablepro_core.a CMakeFiles/tablepro_core.dir/tablepro_core_autogen/mocs_compilation.cpp.o CMakeFiles/tablepro_core.dir/database_driver.cpp.o CMakeFiles/tablepro_core.dir/database_exceptions.cpp.o CMakeFiles/tablepro_core.dir/connection_manager.cpp.o CMakeFiles/tablepro_core.dir/query_executor.cpp.o CMakeFiles/tablepro_core.dir/change_tracker.cpp.o CMakeFiles/tablepro_core.dir/sql_generator.cpp.o
+/usr/bin/ranlib ../../lib/libtablepro_core.a

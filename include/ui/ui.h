@@ -1,0 +1,1 @@
+// Placeholder header for UI functionality

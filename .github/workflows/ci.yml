@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022, macos-13]
+        build_type: [Debug, Release]
+        include:
+          - os: ubuntu-22.04
+            qt_host: linux
+            triplet: x64-linux
+          - os: windows-2022
+            qt_host: windows
+            triplet: x64-windows
+          - os: macos-13
+            qt_host: mac
+            triplet: x64-osx
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install system dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install build-essential ninja-build pkg-config libgl1-mesa-dev libxcb1-dev libxkbcommon-dev libxcb-cursor-dev
+
+    - name: Install system dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install ninja
+
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: '6.6.2'
+        host: ${{ matrix.qt_host }}
+        target: desktop
+        arch: ${{ matrix.arch }}
+        modules: 'qtscxml qtsvg qt3d'
+        install_deps: 'true'
+
+    - name: Install and setup vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'a3d8ea891d8394658ef45aed3d7b42efffdce5da'
+
+    - name: Install dependencies with vcpkg
+      run: |
+        vcpkg install libpq openssl zlib libmysql sqlite3 --triplet=${{ matrix.triplet }}
+
+    - name: Configure CMake
+      run: >
+        cmake -B ${{ github.workspace }}/build
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
+        -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
+        -G "Ninja"
+
+    - name: Build
+      run: cmake --build ${{ github.workspace }}/build --config ${{ matrix.build_type }}
+
+    - name: Run tests
+      run: |
+        cd ${{ github.workspace }}/build
+        ctest -C ${{ matrix.build_type }} --output-on-failure
+      if: runner.os != 'Windows' # Skip tests on Windows for now
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: TablePro-${{ runner.os }}-${{ matrix.build_type }}
+        path: |
+          ${{ github.workspace }}/build/bin/**
+          ${{ github.workspace }}/build/lib/**
+        if-no-files-found: ignore
+        retention-days: 30
+
+  # Upload combined artifacts for all platforms
+  upload-all:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+
+    - name: Create release directory
+      run: |
+        mkdir -p release_artifacts
+        find . -name "*" -type d -exec cp -r {} release_artifacts/ \; 2>/dev/null || true
+
+    - name: Upload release artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: TablePro-All-Platforms
+        path: release_artifacts/

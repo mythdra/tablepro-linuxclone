@@ -1,0 +1,14 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/can/code/tablepro-fork/build/cmake_install.cmake",
+		"/Users/can/code/tablepro-fork/build/src/core/cmake_install.cmake",
+		"/Users/can/code/tablepro-fork/build/src/ui/cmake_install.cmake",
+		"/Users/can/code/tablepro-fork/build/src/services/cmake_install.cmake",
+		"/Users/can/code/tablepro-fork/build/src/drivers/cmake_install.cmake",
+		"/Users/can/code/tablepro-fork/build/tests/cmake_install.cmake",
+		"/Users/can/code/tablepro-fork/build/tests/unit/cmake_install.cmake",
+		"/Users/can/code/tablepro-fork/build/tests/integration/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

@@ -1,0 +1,2 @@
+/usr/bin/ar qc ../../lib/libtablepro_services.a CMakeFiles/tablepro_services.dir/tablepro_services_autogen/mocs_compilation.cpp.o CMakeFiles/tablepro_services.dir/services.cpp.o
+/usr/bin/ranlib ../../lib/libtablepro_services.a

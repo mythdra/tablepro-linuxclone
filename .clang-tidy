@@ -1,0 +1,90 @@
+---
+Checks: >
+  *,-llvm-header-guard,
+  -google-build-using-namespace,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -modernize-use-trailing-return-type,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers,
+  -fuchsia-default-arguments-calls,
+  -fuchsia-default-arguments-declarations,
+  -fuchsia-overloaded-operator-new,
+  -fuchsia-virtual-inheritance,
+  -hicpp-virtual-inheritance,
+  -google-runtime-references,
+  -google-readability-braces-around-statements,
+  -readability-braces-around-statements,
+  -bugprone-suspicious-semicolon,
+  -cppcoreguidelines-init-variables,
+  -llvm-include-order,
+  -readability-implicit-bool-conversion,
+  -cppcoreguidelines-narrowing-conversions,
+  -hicpp-narrowing-conversions,
+  -bugprone-narrowing-conversions,
+  -performance-unnecessary-value-param
+
+WarningsAsErrors: ''
+HeaderFilterRegex: ''
+FormatStyle: file
+CheckOptions:
+  - key: google-readability-todo.author
+    value: 'TablePro Team'
+  - key: readability-identifier-naming.AbstractClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: camelCase
+  - key: readability-identifier-naming.MethodCase
+    value: camelCase
+  - key: readability-identifier-naming.VariableCase
+    value: camelCase
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.GlobalVariableCase
+    value: camelCase
+  - key: readability-identifier-naming.MemberCase
+    value: camelCase
+  - key: readability-identifier-naming.DefaultGlobalVariableCase
+    value: camelCase
+  - key: readability-identifier-naming.DefaultGlobalConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.StaticVariableCase
+    value: camelCase
+  - key: readability-identifier-naming.PrivateMemberCase
+    value: m_camelBack
+  - key: readability-identifier-naming.ProtectedMemberCase
+    value: m_camelBack
+  - key: readability-identifier-naming.PublicMemberCase
+    value: camelCase
+  - key: readability-identifier-naming.PrivateMethodCase
+    value: camelCase
+  - key: readability-identifier-naming.ProtectedMethodCase
+    value: camelCase
+  - key: readability-identifier-naming.PublicMethodCase
+    value: camelCase
+  - key: readability-identifier-naming.NamespaceCase
+    value: lowercase
+  - key: readability-identifier-naming.TypeTemplateParameterCase
+    value: CamelCase
+  - key: readability-identifier-naming.ValueTemplateParameterCase
+    value: camelCase
+  - key: readability-identifier-naming.TemplateTemplateParameterCase
+    value: CamelCase
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.MacroNameCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.ParameterCase
+    value: camelCase
+  - key: readability-identifier-naming.StaticConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.IgnoreMacros
+    value: '1'
+...

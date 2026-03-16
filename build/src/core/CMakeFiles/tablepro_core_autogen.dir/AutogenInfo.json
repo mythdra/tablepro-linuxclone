@@ -1,0 +1,164 @@
+{
+	"BUILD_DIR" : "/Users/can/code/tablepro-fork/build/src/core/tablepro_core_autogen",
+	"CMAKE_BINARY_DIR" : "/Users/can/code/tablepro-fork/build",
+	"CMAKE_CURRENT_BINARY_DIR" : "/Users/can/code/tablepro-fork/build/src/core",
+	"CMAKE_CURRENT_SOURCE_DIR" : "/Users/can/code/tablepro-fork/src/core",
+	"CMAKE_EXECUTABLE" : "/opt/homebrew/bin/cmake",
+	"CMAKE_LIST_FILES" : [ "/Users/can/code/tablepro-fork/src/core/CMakeLists.txt" ],
+	"CMAKE_SOURCE_DIR" : "/Users/can/code/tablepro-fork",
+	"CROSS_CONFIG" : false,
+	"DEP_FILE" : "/Users/can/code/tablepro-fork/build/src/core/tablepro_core_autogen/deps",
+	"DEP_FILE_RULE_NAME" : "tablepro_core_autogen/timestamp",
+	"HEADERS" : 
+	[
+		[
+			"/Users/can/code/tablepro-fork/include/core/change_tracker.h",
+			"MU",
+			"EZC5ESNXS2/moc_change_tracker.cpp",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/include/core/connection_config.h",
+			"MU",
+			"EZC5ESNXS2/moc_connection_config.cpp",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/include/core/connection_manager.h",
+			"MU",
+			"EZC5ESNXS2/moc_connection_manager.cpp",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/include/core/database_driver.h",
+			"MU",
+			"EZC5ESNXS2/moc_database_driver.cpp",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/include/core/database_exceptions.h",
+			"MU",
+			"EZC5ESNXS2/moc_database_exceptions.cpp",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/include/core/database_types.h",
+			"MU",
+			"EZC5ESNXS2/moc_database_types.cpp",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/include/core/query_executor.h",
+			"MU",
+			"EZC5ESNXS2/moc_query_executor.cpp",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/include/core/query_result.h",
+			"MU",
+			"EZC5ESNXS2/moc_query_result.cpp",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/include/core/sql_generator.h",
+			"MU",
+			"EZC5ESNXS2/moc_sql_generator.cpp",
+			null
+		]
+	],
+	"HEADER_EXTENSIONS" : [ "h", "hh", "h++", "hm", "hpp", "hxx", "in", "txx" ],
+	"INCLUDE_DIR" : "/Users/can/code/tablepro-fork/build/src/core/tablepro_core_autogen/include",
+	"MOC_COMPILATION_FILE" : "/Users/can/code/tablepro-fork/build/src/core/tablepro_core_autogen/mocs_compilation.cpp",
+	"MOC_DEFINITIONS" : [ "QT_CORE_LIB", "QT_SQL_LIB" ],
+	"MOC_DEPEND_FILTERS" : 
+	[
+		[
+			"Q_PLUGIN_METADATA",
+			"[\n][ \t]*Q_PLUGIN_METADATA[ \t]*\\([^\\)]*FILE[ \t]*\"([^\"]+)\""
+		]
+	],
+	"MOC_INCLUDES" : 
+	[
+		"/Users/can/code/tablepro-fork/include/core",
+		"/opt/homebrew/opt/qt@6/lib/QtCore.framework/Headers",
+		"/opt/homebrew/opt/qt@6/lib/QtCore.framework",
+		"/opt/homebrew/opt/qt@6/share/qt/mkspecs/macx-clang",
+		"/opt/homebrew/opt/qt@6/include",
+		"/opt/homebrew/opt/qt@6/lib/QtSql.framework/Headers",
+		"/opt/homebrew/opt/qt@6/lib/QtSql.framework",
+		"/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1",
+		"/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/16/include",
+		"/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include",
+		"/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include"
+	],
+	"MOC_MACRO_NAMES" : 
+	[
+		"Q_OBJECT",
+		"Q_GADGET",
+		"Q_NAMESPACE",
+		"Q_NAMESPACE_EXPORT",
+		"Q_GADGET_EXPORT",
+		"Q_ENUM_NS"
+	],
+	"MOC_OPTIONS" : [],
+	"MOC_PATH_PREFIX" : false,
+	"MOC_PREDEFS_CMD" : 
+	[
+		"/usr/bin/c++",
+		"-std=gnu++20",
+		"-w",
+		"-dM",
+		"-E",
+		"/opt/homebrew/share/cmake/Modules/CMakeCXXCompilerABI.cpp"
+	],
+	"MOC_PREDEFS_FILE" : "/Users/can/code/tablepro-fork/build/src/core/tablepro_core_autogen/moc_predefs.h",
+	"MOC_RELAXED_MODE" : false,
+	"MOC_SKIP" : [],
+	"MULTI_CONFIG" : false,
+	"PARALLEL" : 10,
+	"PARSE_CACHE_FILE" : "/Users/can/code/tablepro-fork/build/src/core/CMakeFiles/tablepro_core_autogen.dir/ParseCache.txt",
+	"QT_MOC_EXECUTABLE" : "/opt/homebrew/opt/qt@6/share/qt/libexec/moc",
+	"QT_UIC_EXECUTABLE" : "/opt/homebrew/opt/qt@6/share/qt/libexec/uic",
+	"QT_VERSION_MAJOR" : 6,
+	"QT_VERSION_MINOR" : 10,
+	"SETTINGS_FILE" : "/Users/can/code/tablepro-fork/build/src/core/CMakeFiles/tablepro_core_autogen.dir/AutogenUsed.txt",
+	"SOURCES" : 
+	[
+		[
+			"/Users/can/code/tablepro-fork/src/core/change_tracker.cpp",
+			"MU",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/src/core/connection_manager.cpp",
+			"MU",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/src/core/database_driver.cpp",
+			"MU",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/src/core/database_exceptions.cpp",
+			"MU",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/src/core/query_executor.cpp",
+			"MU",
+			null
+		],
+		[
+			"/Users/can/code/tablepro-fork/src/core/sql_generator.cpp",
+			"MU",
+			null
+		]
+	],
+	"UIC_OPTIONS" : [],
+	"UIC_SEARCH_PATHS" : [],
+	"UIC_SKIP" : [],
+	"UIC_UI_FILES" : [],
+	"USE_BETTER_GRAPH" : true,
+	"VERBOSITY" : 0
+}
