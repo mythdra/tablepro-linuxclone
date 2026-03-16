@@ -5,7 +5,6 @@ export interface ConnectionConfig {
   port: number;
   database: string;
   username: string;
-  password?: string;
   sslMode: SslMode;
   sshConfig?: SshConfig;
 }
@@ -17,8 +16,6 @@ export interface SshConfig {
   port: number;
   username: string;
   authType: 'password' | 'key' | 'agent';
-  privateKey?: string;
-  passphrase?: string;
 }
 
 export interface ConnectionInfo {
