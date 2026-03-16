@@ -41,11 +41,21 @@ export default {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
         },
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))",
+        info: "hsl(var(--info))",
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      fontFamily: {
+        sans: ["IBM Plex Sans", "system-ui", "-apple-system", "sans-serif"],
+        mono: ["JetBrains Mono", "SF Mono", "Consolas", "monospace"],
+      },
+      fontSize: {
+        "editor": ["14px", { lineHeight: "1.6" }],
       },
     },
   },

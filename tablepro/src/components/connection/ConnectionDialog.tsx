@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,14 +19,23 @@ import {
 } from '@/components/ui/select';
 import { useAppStore } from '@/stores/appStore';
 import { tauriApi } from '@/lib/tauri';
+import type { ConnectionConfig } from '@/types';
 
 interface ConnectionDialogProps {
   open: boolean;
   onClose: () => void;
+  editMode?: boolean;
+  connection?: ConnectionConfig;
 }
 
-export function ConnectionDialog({ open, onClose }: ConnectionDialogProps) {
-  const { addConnection, setActiveConnection, setConnectionInfo } = useAppStore();
+export function ConnectionDialog({
+  open,
+  onClose,
+  editMode = false,
+  connection,
+}: ConnectionDialogProps) {
+  const { addConnection, updateConnection, setActiveConnection, setConnectionInfo } =
+    useAppStore();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -40,14 +49,56 @@ export function ConnectionDialog({ open, onClose }: ConnectionDialogProps) {
 
   const [isConnecting, setIsConnecting] = useState(false);
 
+  // Reset form when opening/closing or when connection changes
+  useEffect(() => {
+    if (open) {
+      if (editMode && connection) {
+        setFormData({
+          name: connection.name || '',
+          host: connection.host,
+          port: String(connection.port),
+          database: connection.database,
+          username: connection.username,
+          password: '', // Don't show password
+          type: 'postgresql',
+        });
+      } else {
+        // Reset to defaults for new connection
+        setFormData({
+          name: '',
+          host: 'localhost',
+          port: '5432',
+          database: '',
+          username: '',
+          password: '',
+          type: 'postgresql',
+        });
+      }
+    }
+  }, [open, editMode, connection]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsConnecting(true);
 
     try {
+      if (editMode && connection) {
+        // Update existing connection (just save config, don't connect)
+        updateConnection(connection.id, {
+          name: formData.name || `${formData.host}:${formData.port}`,
+          host: formData.host,
+          port: parseInt(formData.port, 10),
+          database: formData.database,
+          username: formData.username,
+        });
+        onClose();
+        return;
+      }
+
+      // Create new connection
       const connectionId = crypto.randomUUID();
 
-      // Connect directly with individual parameters
+      // Connect directly
       const info = await tauriApi.connect(
         connectionId,
         formData.type,
@@ -58,14 +109,14 @@ export function ConnectionDialog({ open, onClose }: ConnectionDialogProps) {
         formData.password
       );
 
-      const config = {
+      const config: ConnectionConfig = {
         id: connectionId,
         name: formData.name || `${formData.type}://${formData.host}`,
         host: formData.host,
         port: parseInt(formData.port, 10),
         database: formData.database,
         username: formData.username,
-        sslMode: 'disable' as const,
+        sslMode: 'disable',
       };
 
       addConnection(config);
@@ -97,29 +148,37 @@ export function ConnectionDialog({ open, onClose }: ConnectionDialogProps) {
       <DialogContent className="sm:max-w-[425px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>New Connection</DialogTitle>
+            <DialogTitle>
+              {editMode ? 'Edit Connection' : 'New Connection'}
+            </DialogTitle>
             <DialogDescription>
               Connect to a PostgreSQL or MySQL database.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="type">Database Type</Label>
-              <Select
-                value={formData.type}
-                onValueChange={(value: 'postgresql' | 'mysql') =>
-                  setFormData({ ...formData, type: value, port: value === 'postgresql' ? '5432' : '3306' })
-                }
-              >
-                <SelectTrigger id="type">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="postgresql">PostgreSQL</SelectItem>
-                  <SelectItem value="mysql">MySQL</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!editMode && (
+              <div className="grid gap-2">
+                <Label htmlFor="type">Database Type</Label>
+                <Select
+                  value={formData.type}
+                  onValueChange={(value: 'postgresql' | 'mysql') =>
+                    setFormData({
+                      ...formData,
+                      type: value,
+                      port: value === 'postgresql' ? '5432' : '3306',
+                    })
+                  }
+                >
+                  <SelectTrigger id="type">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="postgresql">PostgreSQL</SelectItem>
+                    <SelectItem value="mysql">MySQL</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="name">Connection Name (optional)</Label>
               <Input
@@ -178,7 +237,9 @@ export function ConnectionDialog({ open, onClose }: ConnectionDialogProps) {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">
+                Password {editMode && '(leave empty to keep current)'}
+              </Label>
               <Input
                 id="password"
                 type="password"
@@ -186,7 +247,7 @@ export function ConnectionDialog({ open, onClose }: ConnectionDialogProps) {
                 onChange={(e) =>
                   setFormData({ ...formData, password: e.target.value })
                 }
-                placeholder="••••••••"
+                placeholder={editMode ? '••••••••' : '••••••••'}
               />
             </div>
           </div>
@@ -195,7 +256,11 @@ export function ConnectionDialog({ open, onClose }: ConnectionDialogProps) {
               Cancel
             </Button>
             <Button type="submit" disabled={isConnecting}>
-              {isConnecting ? 'Connecting...' : 'Connect'}
+              {isConnecting
+                ? 'Connecting...'
+                : editMode
+                ? 'Save'
+                : 'Connect'}
             </Button>
           </DialogFooter>
         </form>

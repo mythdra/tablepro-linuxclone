@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { ConnectionConfig, ConnectionInfo, QueryResult, TableInfo, ColumnInfo } from '@/types';
+import type { ConnectionInfo, QueryResult, TableInfo, ColumnInfo } from '@/types';
 
 export const tauriApi = {
   connect: (
@@ -17,7 +17,6 @@ export const tauriApi = {
     invoke('disconnect', { connectionId }),
 
   testConnection: (
-    connectionId: string,
     dbType: string,
     host: string,
     port: number,
@@ -25,7 +24,7 @@ export const tauriApi = {
     username: string,
     password: string
   ): Promise<boolean> =>
-    invoke('test_connection', { connectionId, dbType, host, port, database, username, password }),
+    invoke('test_connection', { dbType, host, port, database, username, password }),
 
   executeQuery: (
     connectionId: string,

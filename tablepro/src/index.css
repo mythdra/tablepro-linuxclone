@@ -1,59 +1,114 @@
+/* Import fonts - must be first */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
+    /* Light mode - Catppuccin Latte inspired */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --foreground: 223 14% 10%;
+    --card: 0 0% 98%;
+    --card-foreground: 223 14% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --popover-foreground: 223 14% 10%;
+    --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 223 14% 10%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 215 14% 46%;
+    --accent: 220 14% 94%;
+    --accent-foreground: 223 14% 10%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 14% 87%;
+    --input: 220 14% 87%;
+    --ring: 221 83% 53%;
     --radius: 0.5rem;
+
+    /* Database client specific colors */
+    --success: 142 71% 45%;
+    --warning: 45 93% 56%;
+    --info: 190 77% 55%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    /* Catppuccin Mocha - IDE dark theme */
+    --background: 223 28% 11%;      /* #1E1E2E */
+    --foreground: 232 20% 84%;       /* #CDD6F4 */
+    --card: 223 28% 14%;             /* #181825 */
+    --card-foreground: 232 20% 84%;
+    --popover: 223 28% 14%;
+    --popover-foreground: 232 20% 84%;
+    --primary: 217 91% 65%;          /* #89B4FA */
+    --primary-foreground: 223 28% 11%;
+    --secondary: 223 20% 19%;        /* #313244 */
+    --secondary-foreground: 232 20% 84%;
+    --muted: 223 20% 19%;            /* #313244 */
+    --muted-foreground: 232 15% 68%; /* #A6ADC8 */
+    --accent: 223 20% 25%;           /* #45475A */
+    --accent-foreground: 232 20% 84%;
+    --destructive: 350 86% 71%;      /* #F38BA8 */
+    --destructive-foreground: 223 28% 11%;
+    --border: 223 20% 22%;           /* #313244 */
+    --input: 223 20% 19%;
+    --ring: 217 91% 65%;
+
+    /* Status colors */
+    --success: 142 71% 65%;          /* #A6E3A1 */
+    --warning: 45 93% 74%;           /* #F9E2AF */
+    --info: 190 86% 60%;             /* #89DCEB */
+
+    /* Editor specific */
+    --editor-gutter: 223 28% 14%;
+    --editor-line-number: 232 15% 58%;
+    --editor-selection: 223 20% 32%;
+    --editor-cursor: 217 91% 65%;
   }
+
+  /* Custom font families - defined as CSS variables */
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
 }
 
 @layer base {
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans), system-ui, sans-serif;
+  }
+
+  /* Code and editor elements */
+  code, pre, .font-mono {
+    font-family: var(--font-mono), monospace;
+  }
+
+  /* Custom scrollbar for IDE feel */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-muted;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+
+  /* Focus ring for accessibility */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 }

@@ -21,6 +21,8 @@ export interface SshConfig {
 export interface ConnectionInfo {
   id: string;
   name: string;
+  host: string;
+  port: number;
   database: string;
   serverVersion: string;
   connectedAt: string;

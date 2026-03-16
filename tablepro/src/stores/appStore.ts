@@ -9,19 +9,30 @@ interface AppState {
   tabs: Tab[];
   activeTabId: string | null;
   sidebarCollapsed: boolean;
+  rightPanelOpen: boolean;
+  rightPanelTab: 'history' | 'formatter';
   theme: 'light' | 'dark' | 'system';
 
+  // Connection actions
   addConnection: (config: ConnectionConfig) => void;
+  updateConnection: (id: string, config: Partial<ConnectionConfig>) => void;
   removeConnection: (id: string) => void;
   setActiveConnection: (id: string | null) => void;
   setConnectionInfo: (id: string, info: ConnectionInfo) => void;
+  clearConnectionInfo: (id: string) => void;
 
+  // Tab actions
   addTab: (tab: Tab) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   updateTab: (id: string, updates: Partial<Tab>) => void;
 
+  // UI actions
   toggleSidebar: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleRightPanel: () => void;
+  setRightPanelOpen: (open: boolean) => void;
+  setRightPanelTab: (tab: 'history' | 'formatter') => void;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
 }
 
@@ -34,11 +45,21 @@ export const useAppStore = create<AppState>()(
       tabs: [],
       activeTabId: null,
       sidebarCollapsed: false,
+      rightPanelOpen: false,
+      rightPanelTab: 'history',
       theme: 'system',
 
+      // Connection actions
       addConnection: (config) =>
         set((state) => ({
           connections: [...state.connections, config],
+        })),
+
+      updateConnection: (id, updates) =>
+        set((state) => ({
+          connections: state.connections.map((c) =>
+            c.id === id ? { ...c, ...updates } : c
+          ),
         })),
 
       removeConnection: (id) =>
@@ -49,6 +70,8 @@ export const useAppStore = create<AppState>()(
             newMap.delete(id);
             return newMap;
           })(),
+          activeConnectionId:
+            state.activeConnectionId === id ? null : state.activeConnectionId,
         })),
 
       setActiveConnection: (id) =>
@@ -61,6 +84,14 @@ export const useAppStore = create<AppState>()(
           return { connectionInfos: newMap };
         }),
 
+      clearConnectionInfo: (id) =>
+        set((state) => {
+          const newMap = new Map(state.connectionInfos);
+          newMap.delete(id);
+          return { connectionInfos: newMap };
+        }),
+
+      // Tab actions
       addTab: (tab) =>
         set((state) => ({
           tabs: [...state.tabs, tab],
@@ -86,8 +117,21 @@ export const useAppStore = create<AppState>()(
           ),
         })),
 
+      // UI actions
       toggleSidebar: () =>
         set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+
+      setSidebarCollapsed: (collapsed: boolean) =>
+        set({ sidebarCollapsed: collapsed }),
+
+      toggleRightPanel: () =>
+        set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
+
+      setRightPanelOpen: (open: boolean) =>
+        set({ rightPanelOpen: open }),
+
+      setRightPanelTab: (tab) =>
+        set({ rightPanelTab: tab }),
 
       setTheme: (theme) => set({ theme }),
     }),

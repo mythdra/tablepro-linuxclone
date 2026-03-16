@@ -41,7 +41,16 @@ export function useConnection() {
   });
 
   const testMutation = useMutation({
-    mutationFn: tauriApi.testConnection,
+    mutationFn: async (vars: { dbType: string; host: string; port: number; database: string; username: string; password: string }) => {
+      return tauriApi.testConnection(
+        vars.dbType,
+        vars.host,
+        vars.port,
+        vars.database,
+        vars.username,
+        vars.password
+      );
+    },
   });
 
   return {
