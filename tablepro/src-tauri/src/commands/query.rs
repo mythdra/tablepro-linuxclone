@@ -59,6 +59,6 @@ pub async fn execute_query(
         rows: row_data,
         row_count: rows.len(),
         execution_time_ms: start.elapsed().as_millis() as u64,
-        truncated: false,
+        truncated: limit.is_some() && rows.len() >= limit.unwrap(),
     })
 }

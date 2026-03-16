@@ -83,17 +83,17 @@ pub async fn get_columns(
             CASE WHEN fk.column_name IS NOT NULL THEN true ELSE false END as is_foreign_key
         FROM information_schema.columns c
         LEFT JOIN (
-            SELECT ku.column_name, ku.table_name
+            SELECT ku.column_name, ku.table_name, ku.table_schema
             FROM information_schema.table_constraints tc
             JOIN information_schema.key_column_usage ku ON tc.constraint_name = ku.constraint_name
             WHERE tc.constraint_type = 'PRIMARY KEY'
-        ) pk ON c.column_name = pk.column_name AND c.table_name = pk.table_name
+        ) pk ON c.column_name = pk.column_name AND c.table_name = pk.table_name AND c.table_schema = pk.table_schema
         LEFT JOIN (
-            SELECT ku.column_name, ku.table_name
+            SELECT ku.column_name, ku.table_name, ku.table_schema
             FROM information_schema.table_constraints tc
             JOIN information_schema.key_column_usage ku ON tc.constraint_name = ku.constraint_name
             WHERE tc.constraint_type = 'FOREIGN KEY'
-        ) fk ON c.column_name = fk.column_name AND c.table_name = fk.table_name
+        ) fk ON c.column_name = fk.column_name AND c.table_name = fk.table_name AND c.table_schema = fk.table_schema
         WHERE c.table_schema = $1 AND c.table_name = $2
         ORDER BY c.ordinal_position"
     )
