@@ -8,7 +8,7 @@ pub struct ConnectionConfig {
     pub port: u16,
     pub database: String,
     pub username: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip)]
     pub password: Option<String>,
     pub ssl_mode: SslMode,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -28,9 +28,9 @@ pub struct SshConfig {
     pub port: u16,
     pub username: String,
     pub auth_type: SshAuthType,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip)]
     pub private_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip)]
     pub passphrase: Option<String>,
 }
 
